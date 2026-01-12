@@ -93,9 +93,15 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
         total_replies += success_stats["replies"]
         total_leads += success_stats["leads"]
 
+        # Campaign Status Mapping
+        raw_status = camp.get("status_v2", camp.get("status"))
+        # 1=Active, 2=Paused, 3=Completed, 0=Inactive/Draft
+        c_status_map = {1: "Active", 2: "Paused", 3: "Completed", 0: "Inactive"}
+        final_status = c_status_map.get(raw_status, str(raw_status))
+
         processed_campaigns.append({
             "name": camp_name,
-            "status": camp.get("status_v2", camp.get("status")),
+            "status": final_status,
             "sent": success_stats["sent"],
             "opens": success_stats["opens"],
             "replies": success_stats["replies"],
