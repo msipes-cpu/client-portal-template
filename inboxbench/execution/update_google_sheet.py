@@ -12,17 +12,18 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SERVICE_ACCOUNT_FILE = '../../credentials.json'
 
 def get_credentials():
-    """Locate and load service account credentials."""
-    creds_path = os.path.join(os.path.dirname(__file__), SERVICE_ACCOUNT_FILE)
-    if not os.path.exists(creds_path):
-        logging.error(f"Credentials file not found at: {creds_path}")
+    """Locate and load service account credentials from env var."""
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+    if not creds_json:
+        logging.error("GOOGLE_CREDENTIALS_JSON environment variable not found.")
         return None
     try:
-        creds = service_account.Credentials.from_service_account_file(
-            creds_path, scopes=SCOPES)
+        creds_dict = json.loads(creds_json)
+        creds = service_account.Credentials.from_service_account_info(
+            creds_dict, scopes=SCOPES)
         return creds
     except Exception as e:
-        logging.error(f"Error loading credentials: {e}")
+        logging.error(f"Error loading credentials from env: {e}")
         return None
 
 def update_client_sheet(client_data, spreadsheet_id):
