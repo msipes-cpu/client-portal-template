@@ -22,7 +22,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
         const fetchConfig = async () => {
             try {
                 // Use hijacked verify endpoint
-                const res = await fetch(`/api/instantly/verify?domain=${domain}`);
+                const res = await fetch(`/api/instantly/verify?domain=${domain}`, { cache: 'no-store' });
                 if (res.ok) {
                     const data = await res.json();
                     if (data.instantlyApiKey) setApiToken(data.instantlyApiKey);
