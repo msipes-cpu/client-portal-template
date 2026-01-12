@@ -152,7 +152,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
             tag_id = api.get_tag_id_by_name(new_tag)
             if tag_id:
                 # Add new tag. (Ideally remove old status tag too, but safe add for now)
-                # api.add_account_tag(email, tag_id, acc.get("tags", [])) <--- Commented out for safety in first deployment until confirmed
+                api.add_account_tag(email, tag_id, acc.get("tags", [])) 
                 # Update our local record for the report
                 if new_tag not in final_tags:
                     final_tags.append(new_tag)
