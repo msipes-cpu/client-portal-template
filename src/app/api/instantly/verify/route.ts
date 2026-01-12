@@ -53,6 +53,7 @@ export async function PUT(req: Request) {
 }
 
 export async function POST(req: Request) {
+    console.log("VERSION CHECK: 2.0 - POST HANDLER");
     // ... existing POST logic ...
     try {
         const { token } = await req.json();
