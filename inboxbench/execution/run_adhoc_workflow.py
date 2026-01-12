@@ -124,6 +124,14 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
         t_ids = acc.get("tags", [])
         acc["tags_resolved"] = [tag_map.get(tid, str(tid)) for tid in t_ids]
 
+    # Status Mapping
+    STATUS_MAP = {
+        1: "Active",
+        2: "Paused",
+        3: "Completed",
+        0: "Inactive"
+    }
+
     count = 0
     total_accounts = len(accounts)
     
@@ -137,7 +145,9 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
         
         # Default status/tags from current state
         final_tags = acc.get("tags_resolved", [])
-        final_status = acc.get("status_v2", acc.get("status"))
+        
+        raw_status = acc.get("status_v2", acc.get("status"))
+        final_status = STATUS_MAP.get(raw_status, str(raw_status))
 
         if action:
             # Prepare log entry
