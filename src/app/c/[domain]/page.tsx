@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Play, Calendar, AlertTriangle, CheckCircle2, Bot, Link as LinkIcon, Lock, Search, Filter, MailCheck, FileSpreadsheet, ArrowRight } from "lucide-react";
 
-export default function ClientDashboard({ params }: { params: { domain: string } }) {
+export default function ClientDashboard({ params }: { params: Promise<{ domain: string }> }) {
+    const { domain } = use(params);
     const [executions, setExecutions] = useState(0);
     const [status, setStatus] = useState<"working" | "error">("working");
     const [nextRun, setNextRun] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -21,7 +22,7 @@ export default function ClientDashboard({ params }: { params: { domain: string }
         const fetchConfig = async () => {
             try {
                 // Use hijacked verify endpoint
-                const res = await fetch(`/api/instantly/verify?domain=${params.domain}`);
+                const res = await fetch(`/api/instantly/verify?domain=${domain}`);
                 if (res.ok) {
                     const data = await res.json();
                     if (data.instantlyApiKey) setApiToken(data.instantlyApiKey);
@@ -32,7 +33,7 @@ export default function ClientDashboard({ params }: { params: { domain: string }
             }
         };
         fetchConfig();
-    }, [params.domain]);
+    }, [domain]);
 
     // Save config helper
     const saveConfig = async (key?: string, sheet?: string) => {
@@ -42,7 +43,7 @@ export default function ClientDashboard({ params }: { params: { domain: string }
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    domain: params.domain,
+                    domain: domain,
                     instantlyApiKey: key,
                     googleSheetUrl: sheet
                 })
