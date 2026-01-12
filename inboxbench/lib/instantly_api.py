@@ -29,20 +29,52 @@ class InstantlyAPI:
             except:
                 pass
             return None
+            return None
+
+    def _get_all(self, endpoint, params=None):
+        """Helper to fetch ALL items using limit/skip pagination."""
+        if params is None:
+            params = {}
+        
+        limit = 100
+        params['limit'] = limit
+        params['skip'] = 0
+        
+        all_items = []
+        
+        while True:
+            data = self._get(endpoint, params=params)
+            
+            # Safety check
+            if not data or not isinstance(data, dict):
+                break
+                
+            items = data.get("items", [])
+            if not items:
+                break
+                
+            all_items.extend(items)
+            
+            if len(items) < limit:
+                break
+                
+            params['skip'] += limit
+            
+        return all_items
 
     def list_campaigns(self, tag_ids=None):
         """Retrieves a list of campaigns, optionally filtered by tags."""
         params = {}
         if tag_ids:
             params['tag_ids'] = tag_ids
-        return self._get("/campaigns", params=params)
+        return self._get_all("/campaigns", params=params)
 
     def list_accounts(self, tag_ids=None):
         """Retrieves a list of email accounts, optionally filtered by tags."""
         params = {}
         if tag_ids:
             params['tag_ids'] = tag_ids
-        return self._get("/accounts", params=params)
+        return self._get_all("/accounts", params=params)
 
     def list_custom_tags(self):
         """Retrieves all custom tags."""
