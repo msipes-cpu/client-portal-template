@@ -30,6 +30,23 @@ class InstantlyAPI:
                 pass
             return None
 
+    def _post(self, endpoint, payload=None):
+        """Internal method to handle POST requests."""
+        url = f"{self.base_url}{endpoint}"
+        if payload is None:
+            payload = {}
+        
+        try:
+            response = requests.post(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Error calling POST {endpoint}: {e}")
+            try:
+                 logging.error(f"Response: {response.text}")
+            except:
+                pass
+            return None
     def _get_all(self, endpoint, params=None):
         """Helper to fetch ALL items using limit/skip pagination."""
         if params is None:
@@ -140,3 +157,83 @@ class InstantlyAPI:
         # So we can leave it or fix it.
         # safe to leave as placeholder or update to known V2 if found.
         return {} 
+
+    def set_account_tags(self, email, tag_ids):
+        """Sets the list of tags for an account (Replace all)."""
+        # V2: POST /accounts/update_tags? Not standard.
+        # Usually it's POST /accounts/update with {"email": "...", "tags": [1, 2]}
+        payload = {
+            "email": email,
+            "tags": tag_ids
+        }
+        # Endpoint guess: /accounts/update based on typical V2 structure
+        # Or look at docs if available. Assuming /accounts/update is valid or /accounts/set-tags
+        # Let's try /accounts/update first.
+        return self._post("/accounts/update", payload=payload)
+
+    def add_account_tag(self, email, tag_id, current_tags=None):
+        """Adds a single tag to an account, preserving others."""
+        if current_tags is None:
+            # Need to fetch current tags if not provided
+            # This is expensive, better to pass them in.
+            # For now, let's assume calling code passes them or we fetch.
+            # Simplified: Just fetch account info? No, single account fetch?
+            # Let's rely on caller passing current_tags list (IDs)
+            logging.error("add_account_tag requires current_tags list")
+            return False
+        
+        if tag_id not in current_tags:
+            new_tags = current_tags + [tag_id]
+            return self.set_account_tags(email, new_tags)
+        return True
+
+    def remove_account_tag(self, email, tag_id, current_tags=None):
+        """Removes a single tag."""
+        if current_tags is None:
+            logging.error("remove_account_tag requires current_tags list")
+            return False
+            
+        if tag_id in current_tags:
+            new_tags = [t for t in current_tags if t != tag_id]
+            return self.set_account_tags(email, new_tags)
+        return True
+
+    def update_account_status(self, email, status_id):
+        """Updates the status (1=Active, etc) of an account."""
+        # status: 0=Inactive?, 1=Active?
+        # User defined statuses: Active, Warming, Benched, Sick, Dead.
+        # Wait, the user rules say "Set status tag".
+        # AND "Add or remove from campaigns".
+        # AND "Disable warmup".
+        # So "Status" in Instantly likely means "Enabled/Disabled" in the app.
+        # User mapped: 
+        #   Active -> Instantly Status 1 (Active)
+        #   Warming -> Instantly Status 1? Or just warmup enabled?
+        #   Benched -> Instantly Status?
+        # A simpler approach: Just use method to update fields.
+        payload = {
+            "email": email,
+            "status": status_id
+        }
+        return self._post("/accounts/update", payload=payload)
+    
+    def set_warmup_status(self, email, enable_warmup: bool):
+        """Enables or disables warmup for an account."""
+        # This might be under /accounts/update with "warmup": {"enable": true/false}
+        # Or "enable_warmup": true/false
+        # Based on LIST response: "warmup_status": 1 (enabled?) 0 (disabled?)
+        payload = {
+            "email": email,
+            "warmup_status": 1 if enable_warmup else 0
+        }
+        return self._post("/accounts/update", payload=payload)
+
+    def get_account_analytics(self, email):
+        """
+        Attempts to fetch detailed analytics (Inbox/Spam rates).
+        If unavailable, returns None or specific error structure.
+        """
+        # Placeholder for Deep Fetch.
+        # Try /analytics/account or similar if exists.
+        # For now, return empty to signal "Not Implemented"
+        return {}

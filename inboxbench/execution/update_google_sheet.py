@@ -113,42 +113,28 @@ def update_client_sheet(client_data, spreadsheet_id):
                 acc.get('tags', '')
             ])
 
-        # Batch Update Request
-        range_name = f"'{target_sheet_title}'!A1" 
+        # Prepare Data for Tabs
+        
+        # TAB 1: Daily Snapshot (Overview + Accounts)
+        # Combine overview and account list into one readable sheet?
+        # User requested specific tabs: "Daily Snapshot", "Action Log", "Client Summary", "Domain Health"
+        # For now, let's stick to the existing "Report" format for the main tab, but rename it "Daily Snapshot"
+        # and add logic to update other tabs if data is provided.
+        
+        # Snapshot Data Construction
+        snapshot_values = []
+        snapshot_values.extend(overview_data)
+        snapshot_values.append([])
+        snapshot_values.append(["CAMPAIGN PERFORMANCE"])
+        snapshot_values.extend([campaign_header] + campaign_rows)
+        snapshot_values.append([])
+        snapshot_values.append(["ACCOUNT HEALTH"])
+        snapshot_values.extend([account_header] + account_rows)
+        
+        # Write Snapshot (Overwrite)
+        write_to_tab(service, spreadsheet_id, "Daily Snapshot", snapshot_values, mode="OVERWRITE")
 
-        # Construct the full list of values to write
-        # Overview
-        final_values = []
-        final_values.extend(overview_data)
-        final_values.append([]) # Spacer
-
-        # Campaigns
-        final_values.append(["CAMPAIGN PERFORMANCE"])
-        final_values.append(campaign_header)
-        final_values.extend(campaign_rows)
-        final_values.append([]) # Spacer
-
-        # Accounts
-        final_values.append(["ACCOUNT HEALTH"])
-        final_values.append(account_header)
-        final_values.extend(account_rows)
-
-        body = {
-            'values': final_values
-        }
-
-        # Clear existing content first to avoid artifacts
-        service.spreadsheets().values().clear(
-            spreadsheetId=spreadsheet_id, range=f"'{target_sheet_title}'"
-        ).execute()
-
-        # Update
-        result = service.spreadsheets().values().update(
-            spreadsheetId=spreadsheet_id, range=range_name,
-            valueInputOption='RAW', body=body
-        ).execute()
-
-        logging.info(f"{result.get('updatedCells')} cells updated for client: {client_data.get('client_name')}")
+        logging.info(f"Updated Daily Snapshot for {client_data.get('client_name')}")
         return True, None
 
     except HttpError as err:
@@ -157,6 +143,48 @@ def update_client_sheet(client_data, spreadsheet_id):
     except Exception as e:
         logging.error(f"Unexpected error in update_client_sheet: {e}")
         return False, str(e)
+
+def write_to_tab(service, spreadsheet_id, tab_name, data, mode="OVERWRITE"):
+    """
+    Helper to write data to a specific tab.
+    Creates the tab if it doesn't exist.
+    """
+    # 1. Ensure tab exists
+    try:
+        sheet_metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        sheets = sheet_metadata.get('sheets', [])
+        titles = [s['properties']['title'] for s in sheets]
+        
+        if tab_name not in titles:
+            req = {'addSheet': {'properties': {'title': tab_name}}}
+            service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': [req]}).execute()
+    except Exception as e:
+        logging.warning(f"Could not check/create tab {tab_name}: {e}")
+
+    # 2. Write Data
+    try:
+        range_name = f"'{tab_name}'!A1"
+        
+        if mode == "OVERWRITE":
+            service.spreadsheets().values().clear(spreadsheetId=spreadsheet_id, range=f"'{tab_name}'").execute()
+            service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id, range=range_name,
+                valueInputOption='RAW', body={'values': data}
+            ).execute()
+        elif mode == "APPEND":
+            service.spreadsheets().values().append(
+                spreadsheetId=spreadsheet_id, range=range_name,
+                valueInputOption='RAW', insertDataOption='INSERT_ROWS', body={'values': data}
+            ).execute()
+
+    except HttpError as err:
+        logging.error(f"Google Sheets API Error: {err}")
+        return False, str(err)
+    except Exception as e:
+        logging.error(f"Unexpected error in update_client_sheet: {e}")
+        return False, str(e)
+    
+    return True, None
 
 if __name__ == "__main__":
     # Test with dummy data and config

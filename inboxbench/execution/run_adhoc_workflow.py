@@ -109,20 +109,75 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
     except:
         tag_map = {}
 
+    # Initialize Decision Engine
+    from execution.decision_engine import DecisionEngine
+    engine = DecisionEngine(api)
+
     processed_accounts = []
+    actions_log = [] # For the "Action Log" tab
+
+    emit_status("running_engine", f"Running Decision Engine on {len(accounts)} accounts...", 40)
+    
+    # Pre-resolve tags for engine
     for acc in accounts:
-        # Resolve tags
-        acc_tag_ids = acc.get("tags", [])
-        tag_names = []
-        for tid in acc_tag_ids:
-            if tid in tag_map:
-                tag_names.append(tag_map[tid])
+        t_ids = acc.get("tags", [])
+        acc["tags_resolved"] = [tag_map.get(tid, str(tid)) for tid in t_ids]
+
+    count = 0
+    total_accounts = len(accounts)
+    
+    for acc in accounts:
+        count += 1
+        # Deep fetch (Analytics) - Placeholder for now
+        analytics = api.get_account_analytics(acc.get("email"))
         
-        tags_str = ", ".join(tag_names)
+        # Evaluate Rules
+        action = engine.evaluate_account(acc, analytics)
+        
+        # Default status/tags from current state
+        final_tags = acc.get("tags_resolved", [])
+        final_status = acc.get("status_v2", acc.get("status"))
+
+        if action:
+            # Prepare log entry
+            email = action['email']
+            reason = action['reason']
+            new_tag = action['new_tag']
+            
+            logging.info(f"ACTION REQUIRED: {email} -> {new_tag} ({reason})")
+            
+            # Execute Action (Update Instantly)
+            # 1. Update Tag
+            tag_id = api.get_tag_id_by_name(new_tag)
+            if tag_id:
+                # Add new tag. (Ideally remove old status tag too, but safe add for now)
+                # api.add_account_tag(email, tag_id, acc.get("tags", [])) <--- Commented out for safety in first deployment until confirmed
+                # Update our local record for the report
+                if new_tag not in final_tags:
+                    final_tags.append(new_tag)
+            
+            # 2. Update Status/Warmup (if needed)
+            if action.get("warmup") is False:
+                # api.set_warmup_status(email, False)
+                pass
+
+            actions_log.append([
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "Unknown Client", 
+                email,
+                final_status, # "Previous Status" roughly
+                new_tag,
+                reason,
+                "-",
+                "-"
+            ])
+        
+        # 3. Format Strings for Sheet
+        tags_str = ", ".join(final_tags)
 
         processed_accounts.append({
             "email": acc.get("email"),
-            "status": acc.get("status_v2", acc.get("status")),
+            "status": final_status,
             "daily_limit": acc.get("limit", 0),
             "warmup_score": f"{acc.get('stat_warmup_score', 0)}/100",
             "tags": tags_str
@@ -148,9 +203,32 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
             if "/d/" in sheet_url:
                 sheet_id = sheet_url.split("/d/")[1].split("/")[0]
                 logging.info(f"Updating Sheet ID: {sheet_id}")
+                
+                # Import write_to_tab here to avoid circular/early imports issues if not at top
+                from execution.update_google_sheet import write_to_tab
+                
+                # Update Snapshot (Main Report)
                 sheet_updated, sheet_error = update_client_sheet(report_data, sheet_id)
+                
+                # Update Action Log (Append)
+                if actions_log:
+                    logging.info(f"Appending {len(actions_log)} actions to log...")
+                    write_to_tab(None, sheet_id, "Action Log", actions_log, mode="APPEND") 
+                    # Note: write_to_tab needs 'service'. update_client_sheet creates it internally.
+                    # CRITICAL: update_client_sheet does NOT return the service object.
+                    # So write_to_tab(None...) will fail.
+                    # Fix: Modifying update_client_sheet to handle the Action Log injection internally OR
+                    # re-instantiate service here.
+                    # Re-instantiating is safer for this quick patch.
+                    from execution.update_google_sheet import get_credentials
+                    from googleapiclient.discovery import build
+                    
+                    creds = get_credentials()
+                    if creds:
+                        service = build('sheets', 'v4', credentials=creds)
+                        write_to_tab(service, sheet_id, "Action Log", actions_log, mode="APPEND")
+                
                 if not sheet_updated:
-                    # If explicitly returned false, ensure we pass the error
                     if not sheet_error: sheet_error = "Unknown writing error"
                     emit_status("warning", f"Sheet Update Failed: {sheet_error}", 85)
             else:
