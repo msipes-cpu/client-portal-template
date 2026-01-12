@@ -72,15 +72,41 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
 
     const handleTestWorkflow = async () => {
         // Validation: Ensure Sheet URL exists
-        if (!sheetUrl) {
-            alert("Please create a Google Sheet first so we have somewhere to send the report.\n\nEnter an email in the 'Output Configuration' section below and click '+' to generate one.");
-            // Try to focus the email input if possible
-            const emailInput = document.querySelector('input[placeholder="Share with email..."]') as HTMLInputElement;
-            if (emailInput) {
-                emailInput.focus();
-                emailInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        let activeSheetUrl = sheetUrl;
+
+        if (!activeSheetUrl) {
+            const emailForSheet = prompt("We created this Google Sheet. Where would you like us to share it?\n\nWhat email address would you like us to share with so that you get your report?");
+
+            if (emailForSheet) {
+                try {
+                    // Temporarily show creating status
+                    const btn = document.getElementById('create-sheet-btn'); // Reuse existing UI text if possible or just rely on state
+
+                    const createRes = await fetch("/api/sheets/create", {
+                        method: "POST",
+                        body: JSON.stringify({
+                            title: `InboxBench - ${domain}`,
+                            shareEmail: emailForSheet
+                        })
+                    });
+                    const createData = await createRes.json();
+
+                    if (createData.success && createData.sheet_url) {
+                        setSheetUrl(createData.sheet_url);
+                        saveConfig(undefined, createData.sheet_url);
+                        activeSheetUrl = createData.sheet_url; // Set for immediate use
+                        alert(`Sheet created and shared with ${createData.shared_with}`);
+                    } else {
+                        alert("Failed to automaticall create sheet: " + (createData.error || "Unknown error"));
+                        return; // Stop if creation failed
+                    }
+                } catch (e) {
+                    alert("Error creating sheet automatically.");
+                    return;
+                }
+            } else {
+                return; // User cancelled
             }
-            return;
         }
 
         setIsTesting(true);
@@ -90,7 +116,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     token: apiToken,
-                    sheetUrl: sheetUrl,
+                    sheetUrl: activeSheetUrl,
                     reportEmail: reportEmail
                 })
             });
