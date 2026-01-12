@@ -124,6 +124,10 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                 }
             }
 
+            if (!activeSheetUrl) {
+                throw new Error("Google Sheet URL is required. Please create one or enter a URL.");
+            }
+
             // STEP 2: Run Automation
             setProgressMessage("Initializing Workflow...");
             const res = await fetch("/api/instantly/run", {

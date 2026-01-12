@@ -253,6 +253,9 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
         except Exception as e:
             logging.error(f"Sheet Update Error: {e}")
             sheet_error = str(e)
+    else:
+        logging.warning("No Sheet URL provided.")
+        emit_status("warning", "Skipped Sheet Update: No URL provided in settings", 85)
     
     # 6. Send Email Report
     email_sent = False
