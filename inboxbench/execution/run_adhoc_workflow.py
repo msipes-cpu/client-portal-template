@@ -113,6 +113,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
     
     # 4. Update Sheet
     sheet_updated = False
+    sheet_error = None
     if sheet_url:
         # Extract ID from URL
         # https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit...
@@ -120,14 +121,17 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
             if "/d/" in sheet_url:
                 sheet_id = sheet_url.split("/d/")[1].split("/")[0]
                 logging.info(f"Updating Sheet ID: {sheet_id}")
-                sheet_updated = update_client_sheet(report_data, sheet_id)
+                sheet_updated, sheet_error = update_client_sheet(report_data, sheet_id)
             else:
                 logging.warning("Invalid Sheet URL format.")
+                sheet_error = "Invalid Sheet URL format"
         except Exception as e:
             logging.error(f"Sheet Update Error: {e}")
-
-    # 5. Send Email Report
+            sheet_error = str(e)
+    
+    # 5. Send Email Report (if requested)
     email_sent = False
+    email_error = None
     if report_email:
         resend_key = os.environ.get("RESEND_API_KEY")
         if resend_key:
@@ -139,20 +143,27 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
                     "summary": {
                         "total_accounts": len(accounts),
                         "total_campaigns": len(campaigns),
-                        "accounts_with_issues": sum(1 for a in processed_accounts if "Sick" in str(a.get("status", ""))) # Rough heuristic
+                        "accounts_with_issues": sum(1 for a in processed_accounts if "Sick" in str(a.get("status", ""))) 
                     },
                     "campaigns_data": processed_campaigns
                 }]
             }
-            email_sent = send_email_report(resend_key, report_email, "InboxBench User", full_report_struct)
+            try:
+                logging.info(f"Sending email report to {report_email}...")
+                email_sent, email_error = send_email_report(resend_key, report_email, "InboxBench User", full_report_struct)
+            except Exception as e:
+                logging.error(f"Email Report Logic Error: {e}")
+                email_error = str(e)
         else:
              logging.warning("RESEND_API_KEY not found. Skipping email.")
+             email_error = "RESEND_API_KEY not found"
 
     return {
         "success": True,
         "accounts_count": len(accounts),
         "campaigns_count": len(campaigns),
         "sheet_updated": sheet_updated,
+        "sheet_error": sheet_error,
         "email_sent": email_sent
     }
 

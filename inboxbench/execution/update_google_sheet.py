@@ -35,12 +35,13 @@ def update_client_sheet(client_data, spreadsheet_id):
         spreadsheet_id (str): The Google Sheet ID for this client.
     """
     if not spreadsheet_id:
-        logging.warning(f"No Google Sheet ID provided for client {client_data.get('client_name')}. Skipping sheet update.")
-        return
+        msg = f"No Google Sheet ID provided for client {client_data.get('client_name')}"
+        logging.warning(msg)
+        return False, msg
 
     creds = get_credentials()
     if not creds:
-        return
+        return False, "Failed to load credentials"
 
     try:
         service = build('sheets', 'v4', credentials=creds)
@@ -124,11 +125,14 @@ def update_client_sheet(client_data, spreadsheet_id):
         ).execute()
 
         logging.info(f"{result.get('updatedCells')} cells updated for client: {client_data.get('client_name')}")
-        return True
+        return True, None
 
     except HttpError as err:
         logging.error(f"Google Sheets API Error: {err}")
-        return False
+        return False, str(err)
+    except Exception as e:
+        logging.error(f"Unexpected error in update_client_sheet: {e}")
+        return False, str(e)
 
 if __name__ == "__main__":
     # Test with dummy data and config

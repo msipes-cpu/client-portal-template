@@ -57,8 +57,9 @@ def send_email_report(api_key, recipient_email, agency_name, full_report):
     setup_logging()
     
     if not api_key or api_key == "YOUR_RESEND_API_KEY":
-        logging.error("Invalid or missing Resend API Key.")
-        return False
+        msg = "Invalid or missing Resend API Key"
+        logging.error(msg)
+        return False, msg
         
     resend.api_key = api_key
 
@@ -76,10 +77,10 @@ def send_email_report(api_key, recipient_email, agency_name, full_report):
         logging.info(f"Sending email via Resend to {recipient_email}...")
         email = resend.Emails.send(params)
         logging.info(f"Email sent successfully. ID: {email.get('id')}")
-        return True
+        return True, None
     except Exception as e:
         logging.error(f"Failed to send email via Resend: {e}")
-        return False
+        return False, str(e)
 
 if __name__ == "__main__":
     # Test execution
