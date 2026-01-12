@@ -17,13 +17,15 @@ export async function GET(req: Request) {
 
         const project = await prisma.project.findUnique({
             where: { subdomain: domain },
-            select: { instantly_api_key: true, google_sheet_url: true }
+            select: { instantly_api_key: true, google_sheet_url: true, share_email: true, report_email: true }
         });
 
         // If no project, return empty (standard behavior for this UI)
         return NextResponse.json({
             instantlyApiKey: project?.instantly_api_key || '',
-            googleSheetUrl: project?.google_sheet_url || ''
+            googleSheetUrl: project?.google_sheet_url || '',
+            shareEmail: project?.share_email || '',
+            reportEmail: project?.report_email || ''
         });
     } catch (e) {
         console.error("GET /api/instantly/verify error:", e);
@@ -35,12 +37,14 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
     try {
         const body = await req.json();
-        const { domain, instantlyApiKey, googleSheetUrl } = body;
+        const { domain, instantlyApiKey, googleSheetUrl, shareEmail, reportEmail } = body;
         if (!domain) return NextResponse.json({ error: 'Domain required' }, { status: 400 });
 
         const updateData: any = {};
         if (instantlyApiKey !== undefined) updateData.instantly_api_key = instantlyApiKey;
         if (googleSheetUrl !== undefined) updateData.google_sheet_url = googleSheetUrl;
+        if (shareEmail !== undefined) updateData.share_email = shareEmail;
+        if (reportEmail !== undefined) updateData.report_email = reportEmail;
 
         // Upsert ensures the project exists even if not seeded
         await prisma.project.upsert({
@@ -55,6 +59,10 @@ export async function PUT(req: Request) {
                 current_phase: "setup",
                 next_milestone: "init",
                 last_updated: new Date().toISOString(),
+                instantly_api_key: instantlyApiKey || '',
+                google_sheet_url: googleSheetUrl || '',
+                share_email: shareEmail || '',
+                report_email: reportEmail || '',
                 ...updateData
             }
         });

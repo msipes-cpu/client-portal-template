@@ -38,6 +38,8 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                     }
 
                     if (data.googleSheetUrl) setSheetUrl(data.googleSheetUrl);
+                    if (data.shareEmail) setShareEmail(data.shareEmail);
+                    if (data.reportEmail) setReportEmail(data.reportEmail);
                 } else {
                     console.error("Fetch failed:", await res.text());
                 }
@@ -53,7 +55,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
     }, [domain]);
 
     // Save config helper
-    const saveConfig = async (key?: string, sheet?: string) => {
+    const saveConfig = async (key?: string, sheet?: string, share?: string, report?: string) => {
         try {
             // Use hijacked verify endpoint (PUT)
             await fetch('/api/instantly/verify', {
@@ -62,7 +64,9 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                 body: JSON.stringify({
                     domain: domain,
                     instantlyApiKey: key,
-                    googleSheetUrl: sheet
+                    googleSheetUrl: sheet,
+                    shareEmail: share,
+                    reportEmail: report
                 })
             });
         } catch (e) {
@@ -80,7 +84,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
             if (emailForSheet) {
                 try {
                     // Temporarily show creating status
-                    const btn = document.getElementById('create-sheet-btn'); // Reuse existing UI text if possible or just rely on state
+                    const btn = document.getElementById('create-sheet-btn');
 
                     const createRes = await fetch("/api/sheets/create", {
                         method: "POST",
@@ -93,7 +97,12 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
 
                     if (createData.success && createData.sheet_url) {
                         setSheetUrl(createData.sheet_url);
-                        saveConfig(undefined, createData.sheet_url);
+                        setShareEmail(emailForSheet);
+                        setReportEmail(emailForSheet);
+
+                        // Sync and save everything
+                        saveConfig(undefined, createData.sheet_url, emailForSheet, emailForSheet);
+
                         activeSheetUrl = createData.sheet_url; // Set for immediate use
                         alert(`Sheet created and shared with ${createData.shared_with}`);
                     } else {

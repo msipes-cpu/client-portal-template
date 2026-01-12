@@ -21,6 +21,8 @@ model Project {
   blueprint_path   String?
   instantly_api_key String?
   google_sheet_url String?
+  share_email      String?
+  report_email     String?
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 }
