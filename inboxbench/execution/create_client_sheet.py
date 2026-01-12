@@ -73,6 +73,8 @@ def create_sheet(title):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
     parser.add_argument("--title", default="InboxBench Verification Report")
     parser.add_argument("--share_email", help="Email address to share the sheet with")
     args = parser.parse_args()
