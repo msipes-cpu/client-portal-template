@@ -102,14 +102,15 @@ def update_client_sheet(client_data, spreadsheet_id):
             ])
         
         # 3. Account Health
-        account_header = ["Email", "Status", "Daily Limit", "Warmup Score"]
+        account_header = ["Email", "Status", "Daily Limit", "Warmup Score", "Tags"]
         account_rows = []
         for acc in client_data.get('accounts', []):
             account_rows.append([
                 acc.get('email', 'Unknown'),
                 acc.get('status', 'Unknown'),
                 acc.get('daily_limit', 0),
-                f"{acc.get('warmup_score', 'N/A')}"
+                f"{acc.get('warmup_score', 'N/A')}",
+                acc.get('tags', '')
             ])
 
         # Batch Update Request

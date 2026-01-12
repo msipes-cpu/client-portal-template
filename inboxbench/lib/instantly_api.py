@@ -94,6 +94,25 @@ class InstantlyAPI:
                 return t.get("id")
         return None
 
+    def get_all_tags_map(self):
+        """Returns a dict mapping tag ID to tag name."""
+        tags = self.list_custom_tags()
+        tag_map = {}
+        
+        items = []
+        if isinstance(tags, dict) and "items" in tags:
+            items = tags["items"]
+        elif isinstance(tags, list):
+            items = tags
+            
+        for t in items:
+            t_id = t.get("id")
+            t_label = t.get("label")
+            if t_id and t_label:
+                tag_map[t_id] = t_label
+                
+        return tag_map
+
     def get_account_vitals(self, account_id):
         return {"spf": True, "dkim": True, "dmarc": True} 
 

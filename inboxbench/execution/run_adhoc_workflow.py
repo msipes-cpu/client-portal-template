@@ -103,13 +103,31 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
             "reply_rate": 0
         })
 
+        })
+
+    # Fetch Tags Map
+    try:
+        tag_map = api.get_all_tags_map()
+    except:
+        tag_map = {}
+
     processed_accounts = []
     for acc in accounts:
+        # Resolve tags
+        acc_tag_ids = acc.get("tags", [])
+        tag_names = []
+        for tid in acc_tag_ids:
+            if tid in tag_map:
+                tag_names.append(tag_map[tid])
+        
+        tags_str = ", ".join(tag_names)
+
         processed_accounts.append({
             "email": acc.get("email"),
             "status": acc.get("status_v2", acc.get("status")),
             "daily_limit": acc.get("limit", 0),
-            "warmup_score": f"{acc.get('stat_warmup_score', 0)}/100"
+            "warmup_score": f"{acc.get('stat_warmup_score', 0)}/100",
+            "tags": tags_str
         })
 
     report_data = {
