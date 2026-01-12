@@ -26,7 +26,8 @@ export async function GET(req: Request) {
             googleSheetUrl: project?.google_sheet_url || ''
         });
     } catch (e) {
-        return NextResponse.json({ error: 'Fetch error' }, { status: 500 });
+        console.error("GET /api/instantly/verify error:", e);
+        return NextResponse.json({ error: 'Fetch error', details: String(e) }, { status: 500 });
     }
 }
 
