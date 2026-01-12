@@ -626,6 +626,61 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                                 </div>
                             </div>
 
+                            {/* Service Account Permission Helper */}
+                            <div className="space-y-2 p-3 bg-blue-500/5 rounded-lg border border-blue-500/20">
+                                <label className="text-xs font-semibold uppercase tracking-wider text-blue-400 flex items-center">
+                                    <Lock className="w-3 h-3 mr-1" /> Grant Access
+                                </label>
+                                <p className="text-[10px] text-muted-foreground mb-2">
+                                    If you use your own sheet, you must share it with this email as an <strong>Editor</strong>:
+                                </p>
+                                <div className="flex gap-2">
+                                    <code className="flex-1 bg-background/50 px-2 py-1 rounded text-[10px] font-mono truncate border border-border/50 flex items-center">
+                                        antigravity@antigravity-479502.iam.gserviceaccount.com
+                                    </code>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 text-[10px]"
+                                        onClick={() => {
+                                            navigator.clipboard.writeText("antigravity@antigravity-479502.iam.gserviceaccount.com");
+                                            alert("Email copied to clipboard!");
+                                        }}
+                                    >
+                                        Copy
+                                    </Button>
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        className="h-7 text-[10px]"
+                                        onClick={async () => {
+                                            if (!sheetUrl) { alert("Enter a sheet URL first"); return; }
+                                            const btn = document.getElementById("check-access-btn");
+                                            if (btn) btn.innerText = "Checking...";
+
+                                            try {
+                                                const res = await fetch("/api/sheets/check-access", {
+                                                    method: "POST",
+                                                    body: JSON.stringify({ sheetUrl })
+                                                });
+                                                const data = await res.json();
+                                                if (data.success) {
+                                                    alert("✅ Success! We have Write Access to:\n" + data.title);
+                                                } else {
+                                                    alert("❌ Access Denied:\n" + data.error);
+                                                }
+                                            } catch (e) {
+                                                alert("Connection Error");
+                                            } finally {
+                                                if (btn) btn.innerText = "Check Access";
+                                            }
+                                        }}
+                                    >
+                                        <span id="check-access-btn">Check Access</span>
+                                    </Button>
+                                </div>
+                            </div>
+
                         </CardContent>
                     </Card>
                 </div>

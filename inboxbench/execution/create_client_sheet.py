@@ -11,7 +11,6 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO, format='%(levelname)s
 
 # Constants
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-IMPERSONATED_USER = "msipes@sipesautomation.com"
 
 # Locate credentials
 def get_credentials():
@@ -23,7 +22,6 @@ def get_credentials():
         try:
             info = json.loads(json_creds)
             creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-            creds = creds.with_subject(IMPERSONATED_USER)
             return creds
         except Exception as e:
             auth_debug.append(f"Env var load failed: {str(e)}")
@@ -44,8 +42,6 @@ def get_credentials():
         if c and os.path.exists(c):
             try:
                 creds = service_account.Credentials.from_service_account_file(c, scopes=SCOPES)
-                # Impersonate user to own the file
-                creds = creds.with_subject(IMPERSONATED_USER)
                 break
             except Exception as e:
                 auth_debug.append(f"File {c} load failed: {str(e)}")
@@ -69,7 +65,7 @@ def create_sheet(title):
     service = build('sheets', 'v4', credentials=creds)
 
     try:
-        logging.info(f"Creating sheet '{title}' as {IMPERSONATED_USER}...")
+        logging.info(f"Creating sheet '{title}' as Service Account...")
         spreadsheet = {
             'properties': {
                 'title': title
@@ -86,7 +82,7 @@ def create_sheet(title):
             "success": True, 
             "sheet_id": sheet_id, 
             "sheet_url": sheet_url,
-            "owner": IMPERSONATED_USER,
+            "owner": "Service Account",
         }
 
     except Exception as e:
@@ -104,7 +100,7 @@ if __name__ == "__main__":
         # We need credentials again to share
         creds_result = get_credentials()
         # Assume it succeeds since create_sheet succeeded (unless transient)
-        if hasattr(creds_result, 'with_subject'): # It's a credential object
+        if hasattr(creds_result, 'service_account_email'): # It's a credential object
              creds = creds_result
              try:
                 drive_service = build('drive', 'v3', credentials=creds) 
