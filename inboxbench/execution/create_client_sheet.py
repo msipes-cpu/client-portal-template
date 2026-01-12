@@ -14,7 +14,7 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapi
 IMPERSONATED_USER = "msipes@sipesautomation.com"
 
 # Locate credentials
-def get_service():
+def get_credentials():
     auth_debug = []
     
     # Try env var for raw JSON content first
@@ -24,7 +24,7 @@ def get_service():
             info = json.loads(json_creds)
             creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
             creds = creds.with_subject(IMPERSONATED_USER)
-            return build('sheets', 'v4', credentials=creds)
+            return creds
         except Exception as e:
             auth_debug.append(f"Env var load failed: {str(e)}")
             logging.warning(f"Failed to load creds from env var: {e}")
@@ -58,16 +58,15 @@ def get_service():
         logging.error("Could not find valid credentials.json")
         return {"error": "Authentication failed", "debug": auth_debug}
     
-    return build('sheets', 'v4', credentials=creds)
+    return creds
 
 def create_sheet(title):
-    service_result = get_service()
-    if isinstance(service_result, dict) and "error" in service_result:
-         return {"success": False, "error": service_result["error"], "debug": service_result.get("debug")}
+    creds_result = get_credentials()
+    if isinstance(creds_result, dict) and "error" in creds_result:
+         return {"success": False, "error": creds_result["error"], "debug": creds_result.get("debug")}
     
-    service = service_result
-    if not service:
-        return {"success": False, "error": "Authentication failed (Service None)"}
+    creds = creds_result
+    service = build('sheets', 'v4', credentials=creds)
 
     try:
         logging.info(f"Creating sheet '{title}' as {IMPERSONATED_USER}...")
@@ -83,14 +82,12 @@ def create_sheet(title):
         
         logging.info(f"Created: {sheet_url}")
         
-        # Optional: Add headers immediately? 
-        # For now, just empty sheet is requested. User can run workflow to populate it.
-        
         return {
             "success": True, 
             "sheet_id": sheet_id, 
             "sheet_url": sheet_url,
-            "owner": IMPERSONATED_USER
+            "owner": IMPERSONATED_USER,
+            # We don't return creds directly in JSON, but helper function returns it
         }
 
     except Exception as e:
@@ -105,29 +102,32 @@ if __name__ == "__main__":
     result = create_sheet(args.title)
     
     if result["success"] and args.share_email:
-        # Share the sheet
-        try:
-            drive_service = build('drive', 'v3', credentials=get_service()._credentials) 
-            # Note: get_service returns sheets service, we reuse creds
-            
-            permission = {
-                'type': 'user',
-                'role': 'writer',
-                'emailAddress': args.share_email
-            }
-            
-            drive_service.permissions().create(
-                fileId=result["sheet_id"],
-                body=permission,
-                fields='id',
-                sendNotificationEmail=True
-            ).execute()
-            
-            result["shared_with"] = args.share_email
-            logging.info(f"Shared with {args.share_email}")
-            
-        except Exception as share_error:
-            logging.error(f"Failed to share: {share_error}")
-            result["share_error"] = str(share_error)
+        # We need credentials again to share
+        creds_result = get_credentials()
+        # Assume it succeeds since create_sheet succeeded (unless transient)
+        if hasattr(creds_result, 'with_subject'): # It's a credential object
+             creds = creds_result
+             try:
+                drive_service = build('drive', 'v3', credentials=creds) 
+                
+                permission = {
+                    'type': 'user',
+                    'role': 'writer',
+                    'emailAddress': args.share_email
+                }
+                
+                drive_service.permissions().create(
+                    fileId=result["sheet_id"],
+                    body=permission,
+                    fields='id',
+                    sendNotificationEmail=True
+                ).execute()
+                
+                result["shared_with"] = args.share_email
+                logging.info(f"Shared with {args.share_email}")
+                
+             except Exception as share_error:
+                logging.error(f"Failed to share: {share_error}")
+                result["share_error"] = str(share_error)
 
     print(json.dumps(result))
