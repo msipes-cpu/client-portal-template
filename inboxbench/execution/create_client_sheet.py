@@ -87,7 +87,6 @@ def create_sheet(title):
             "sheet_id": sheet_id, 
             "sheet_url": sheet_url,
             "owner": IMPERSONATED_USER,
-            # We don't return creds directly in JSON, but helper function returns it
         }
 
     except Exception as e:
