@@ -71,6 +71,18 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
     };
 
     const handleTestWorkflow = async () => {
+        // Validation: Ensure Sheet URL exists
+        if (!sheetUrl) {
+            alert("Please create a Google Sheet first so we have somewhere to send the report.\n\nEnter an email in the 'Output Configuration' section below and click '+' to generate one.");
+            // Try to focus the email input if possible
+            const emailInput = document.querySelector('input[placeholder="Share with email..."]') as HTMLInputElement;
+            if (emailInput) {
+                emailInput.focus();
+                emailInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            return;
+        }
+
         setIsTesting(true);
         try {
             const res = await fetch("/api/instantly/run", {
