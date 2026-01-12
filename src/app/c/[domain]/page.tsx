@@ -75,6 +75,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
         }
     };
 
+    const [warmupThreshold, setWarmupThreshold] = useState(70);
     const [progress, setProgress] = useState(0);
     const [progressMessage, setProgressMessage] = useState("");
 
@@ -131,7 +132,8 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                 body: JSON.stringify({
                     token: apiToken,
                     sheetUrl: activeSheetUrl,
-                    reportEmail: reportEmail || shareEmail
+                    reportEmail: reportEmail || shareEmail,
+                    warmupThreshold: parseInt(String(warmupThreshold)) || 70
                 })
             });
 
@@ -336,7 +338,20 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                                 </div>
 
                                 <div className="flex flex-col space-y-2">
-                                    <Label className="text-zinc-400">Run Automation</Label>
+                                    <div className="flex items-end gap-2">
+                                        <div className="flex-1 space-y-1">
+                                            <Label className="text-zinc-400 text-xs">Warmup Threshold (%)</Label>
+                                            <Input
+                                                type="number"
+                                                min="1" max="100"
+                                                value={warmupThreshold}
+                                                onChange={(e) => setWarmupThreshold(Number(e.target.value))}
+                                                className="bg-background/20 border-zinc-700 h-8 text-xs"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <Label className="text-zinc-400 mt-2">Run Automation</Label>
                                     <Button
                                         onClick={handleTestWorkflow}
                                         disabled={isTesting || !apiToken}

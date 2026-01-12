@@ -19,8 +19,9 @@ TAG_STATUS_SICK = "status-sick"
 TAG_STATUS_DEAD = "status-dead"
 
 class DecisionEngine:
-    def __init__(self, api):
+    def __init__(self, api, config=None):
         self.api = api
+        self.config = config or {}
         self.actions_log = []
 
     def evaluate_account(self, account, analytics=None):
@@ -31,6 +32,9 @@ class DecisionEngine:
         email = account.get("email")
         created_at_str = account.get("timestamp_created")
         current_tags = account.get("tags_resolved", []) # List of tag names
+        
+        # Parse Thresholds
+        warmup_min = self.config.get("warmup_threshold", WARMUP_INBOX_MIN)
         
         # Parse Dates
         created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
@@ -64,10 +68,9 @@ class DecisionEngine:
 
         # --- RULE 3: Warmup Health Check ---
         # Using Warmup Score as proxy for now since API doesn't give rates easily
-        # 100 score ~= good rates. <70 score ~= bad.
-        if warmup_score < 70:
+        if warmup_score < warmup_min:
             if status_tag != TAG_STATUS_SICK:
-                 return self._create_action(email, f"Rule 3: Low Health Score ({warmup_score})", TAG_STATUS_SICK, warmup=True, campaigns="REMOVE")
+                 return self._create_action(email, f"Rule 3: Low Health Score ({warmup_score} < {warmup_min})", TAG_STATUS_SICK, warmup=True, campaigns="REMOVE")
             return None
 
         # --- RULE 4: Warmup Recovery Check ---

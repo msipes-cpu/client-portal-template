@@ -25,7 +25,7 @@ def emit_status(step, message, percent):
     }
     print(json.dumps(data), flush=True)
 
-def run_adhoc_report(api_key, sheet_url, report_email=None):
+def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70):
     """
     Runs a report for ALL accounts in the workspace.
     Streams progress updates to stdout.
@@ -111,7 +111,8 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
 
     # Initialize Decision Engine
     from execution.decision_engine import DecisionEngine
-    engine = DecisionEngine(api)
+    engine_config = {"warmup_threshold": warmup_threshold}
+    engine = DecisionEngine(api, config=engine_config)
 
     processed_accounts = []
     actions_log = [] # For the "Action Log" tab
@@ -194,7 +195,28 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
         "accounts": processed_accounts
     }
     
-    # 4. Update Sheet
+    # 4. Generate Transition Summary (for Sheet & Email)
+    summary_counts = {
+        "Sick": 0, "Benched": 0, "Active": 0, "Warming": 0
+    }
+    transition_list = []
+    
+    for log in actions_log:
+        # log format: [time, client, email, prev, new, reason, ...]
+        new_status = log[4]
+        if new_status.startswith("status-"):
+            key = new_status.replace("status-", "").capitalize()
+            summary_counts[key] = summary_counts.get(key, 0) + 1
+        transition_list.append(f"{log[2]} -> {log[4]} ({log[5]})")
+
+    # Add Summary to Report Data
+    report_data["run_summary"] = {
+        "total_actions": len(actions_log),
+        "transitions": transition_list,
+        "counts": summary_counts
+    }
+
+    # 5. Update Sheet
     sheet_updated = False
     sheet_error = None
     if sheet_url:
@@ -204,25 +226,18 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
                 sheet_id = sheet_url.split("/d/")[1].split("/")[0]
                 logging.info(f"Updating Sheet ID: {sheet_id}")
                 
-                # Import write_to_tab here to avoid circular/early imports issues if not at top
-                from execution.update_google_sheet import write_to_tab
+                from execution.update_google_sheet import write_to_tab, get_credentials
+                from googleapiclient.discovery import build
                 
-                # Update Snapshot (Main Report)
+                # Update Snapshot (Main Report) + Summary Table? 
+                # Ideally we append a summary table to the snapshot. 
+                # For now let's keep Snapshot clean and just ensure Action Log is populated.
                 sheet_updated, sheet_error = update_client_sheet(report_data, sheet_id)
                 
                 # Update Action Log (Append)
                 if actions_log:
                     logging.info(f"Appending {len(actions_log)} actions to log...")
-                    write_to_tab(None, sheet_id, "Action Log", actions_log, mode="APPEND") 
-                    # Note: write_to_tab needs 'service'. update_client_sheet creates it internally.
-                    # CRITICAL: update_client_sheet does NOT return the service object.
-                    # So write_to_tab(None...) will fail.
-                    # Fix: Modifying update_client_sheet to handle the Action Log injection internally OR
-                    # re-instantiate service here.
-                    # Re-instantiating is safer for this quick patch.
-                    from execution.update_google_sheet import get_credentials
-                    from googleapiclient.discovery import build
-                    
+                    # Re-instantiate service 
                     creds = get_credentials()
                     if creds:
                         service = build('sheets', 'v4', credentials=creds)
@@ -239,13 +254,18 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
             logging.error(f"Sheet Update Error: {e}")
             sheet_error = str(e)
     
-    # 5. Send Email Report
+    # 6. Send Email Report
     email_sent = False
     email_error = None
     if report_email:
         emit_status("sending_email", f"Sending report to {report_email}...", 90)
         resend_key = os.environ.get("RESEND_API_KEY")
         if resend_key:
+            # Build text summary of transitions
+            trans_summary_text = "\n".join(transition_list[:10]) # Limit to 10
+            if len(transition_list) > 10:
+                trans_summary_text += f"\n...and {len(transition_list)-10} more."
+
             full_report_struct = {
                 "client_reports": [{
                     "client_name": "Ad-Hoc Run",
@@ -253,7 +273,8 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
                     "summary": {
                         "total_accounts": len(accounts),
                         "total_campaigns": len(campaigns),
-                        "accounts_with_issues": sum(1 for a in processed_accounts if "Sick" in str(a.get("status", ""))) 
+                        "accounts_with_issues": sum(1 for a in processed_accounts if "Sick" in str(a.get("status", ""))),
+                        "run_summary_text": trans_summary_text # Pass this to email template if supported
                     },
                     "campaigns_data": processed_campaigns
                 }]
@@ -275,7 +296,8 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
         "campaigns_count": len(campaigns),
         "sheet_updated": sheet_updated,
         "sheet_error": sheet_error,
-        "email_sent": email_sent
+        "email_sent": email_sent,
+        "run_summary": report_data["run_summary"] 
     }
 
 if __name__ == "__main__":
@@ -283,10 +305,11 @@ if __name__ == "__main__":
     parser.add_argument("--key", required=True)
     parser.add_argument("--sheet", required=False)
     parser.add_argument("--report_email", required=False)
+    parser.add_argument("--warmup_threshold", type=int, default=70, help="Min Warmup Score (Default 70)")
     args = parser.parse_args()
     
     try:
-        result = run_adhoc_report(args.key, args.sheet, args.report_email)
+        result = run_adhoc_report(args.key, args.sheet, args.report_email, args.warmup_threshold)
         # Final output for the API to capture as the "Result"
         print(json.dumps({"type": "result", "data": result}), flush=True)
     except Exception as e:
