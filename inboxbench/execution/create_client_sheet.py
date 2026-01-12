@@ -61,7 +61,15 @@ def create_sheet(title):
     if isinstance(creds_result, dict) and "error" in creds_result:
          return {"success": False, "error": creds_result["error"], "debug": creds_result.get("debug")}
     
-    creds = creds_result
+    # ATTEMPT IMPERSONATION IF AVAILABLE
+    # This bypasses Service Account limits by acting as the admin user
+    try:
+        creds = creds_result.with_subject('msipes@sipesautomation.com')
+        logging.info("Impersonating msipes@sipesautomation.com for sheet creation...")
+    except Exception as e:
+        logging.warning(f"Impersonation failed, falling back on Service Account: {e}")
+        creds = creds_result
+
     service = build('sheets', 'v4', credentials=creds)
 
     try:
