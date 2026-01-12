@@ -175,7 +175,7 @@ export default function ClientDashboard({ params }: { params: { domain: string }
                                     </CardDescription>
                                 </div>
                                 <div className="px-3 py-1 rounded-full bg-secondary text-xs uppercase font-mono border border-border text-primary/80">
-                                    v2.5.0-persistence
+                                    v2.5.1-persistence-check
                                 </div>
                             </div>
                         </CardHeader>
