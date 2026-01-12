@@ -79,58 +79,59 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
     const [progressMessage, setProgressMessage] = useState("");
 
     const handleTestWorkflow = async () => {
-        let activeSheetUrl = sheetUrl;
-        if (!activeSheetUrl) {
-            // ... (existing prompt logic omitted for brevity, logic remains same)
-            // Ideally should reuse existing logic, but for simplicity of replacement, I assume previously verified logic or prompt
-            // RE-INSERTING THE PROMPT LOGIC CAREFULLY
-            const emailForSheet = prompt("We created this Google Sheet. Where would you like us to share it?\n\nWhat email address would you like us to share with so that you get your report?");
-
-            if (emailForSheet) {
-                try {
-                    const btn = document.getElementById('create-sheet-btn');
-                    const createRes = await fetch("/api/sheets/create", {
-                        method: "POST",
-                        body: JSON.stringify({
-                            title: `InboxBench - ${domain}`,
-                            shareEmail: emailForSheet
-                        })
-                    });
-                    const createData = await createRes.json();
-
-                    if (createData.success && createData.sheet_url) {
-                        setSheetUrl(createData.sheet_url);
-                        setShareEmail(emailForSheet);
-                        setReportEmail(emailForSheet);
-                        saveConfig(undefined, createData.sheet_url, emailForSheet, emailForSheet);
-                        activeSheetUrl = createData.sheet_url;
-                        alert(`Sheet created and shared with ${createData.shared_with}`);
-                    } else {
-                        alert("Failed to automatically create sheet: " + (createData.error || "Unknown error"));
-                        return;
-                    }
-                } catch (e) {
-                    alert("Error creating sheet automatically.");
-                    return;
-                }
-            } else {
-                return;
-            }
-        }
-
         setIsTesting(true);
         setStatus("working");
         setProgress(0);
-        setProgressMessage("Initializing...");
+
+        let activeSheetUrl = sheetUrl;
 
         try {
+            // STEP 1: Auto-Create Sheet if missing
+            if (!activeSheetUrl) {
+                setProgressMessage("Creating Google Sheet...");
+
+                // Determine email to share with
+                let targetEmail = shareEmail || reportEmail;
+                if (!targetEmail) {
+                    const userInput = prompt("Where should we send the report? (Enter email address)");
+                    if (userInput) {
+                        targetEmail = userInput;
+                        setReportEmail(userInput);
+                        setShareEmail(userInput);
+                    } else {
+                        throw new Error("Email required to share the report sheet.");
+                    }
+                }
+
+                const createRes = await fetch("/api/sheets/create", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        title: `InboxBench - ${domain}`,
+                        shareEmail: targetEmail
+                    })
+                });
+                const createData = await createRes.json();
+
+                if (createData.success && createData.sheet_url) {
+                    activeSheetUrl = createData.sheet_url;
+                    setSheetUrl(activeSheetUrl);
+                    // Save immediatley so next run is faster
+                    await saveConfig(undefined, activeSheetUrl, targetEmail, targetEmail);
+                    setProgressMessage("Sheet Created! Starting Automation...");
+                } else {
+                    throw new Error("Failed to create sheet: " + (createData.error || "Unknown error"));
+                }
+            }
+
+            // STEP 2: Run Automation
+            setProgressMessage("Initializing Workflow...");
             const res = await fetch("/api/instantly/run", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     token: apiToken,
                     sheetUrl: activeSheetUrl,
-                    reportEmail: reportEmail
+                    reportEmail: reportEmail || shareEmail
                 })
             });
 
@@ -146,39 +147,38 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
 
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split("\n");
-
-                // Keep the last part if incomplete
                 buffer = lines.pop() || "";
 
                 for (const line of lines) {
                     if (!line.trim()) continue;
                     try {
                         const event = JSON.parse(line);
-
                         if (event.type === "progress") {
                             setProgress(event.percent);
                             setProgressMessage(event.message);
                         } else if (event.type === "result") {
-                            // Success!
                             setExecutions(prev => prev + 1);
                             setStatus("working");
                             setProgress(100);
                             setProgressMessage("Completed Successfully!");
                         } else if (event.type === "error") {
-                            setStatus("error");
-                            alert("Workflow Error: " + event.message);
-                            setIsTesting(false);
-                            return; // Stop processing
+                            throw new Error(event.message);
+                        } else if (event.type === "warning") {
+                            // Just log warnings, don't crash
+                            console.warn("Workflow Warning:", event.message);
+                            setProgressMessage(`Warning: ${event.message}`);
                         }
-                    } catch (e) {
-                        console.warn("Failed to parse event:", line);
+                    } catch (e: any) {
+                        // If it's our thrown error, rethrow to catch block
+                        if (e.message && !e.message.includes("JSON")) throw e;
                     }
                 }
             }
 
-        } catch (e) {
+        } catch (e: any) {
             setStatus("error");
-            alert("Network Error");
+            alert("Workflow Error: " + e.message);
+            setProgressMessage("Failed: " + e.message);
         } finally {
             setIsTesting(false);
         }
@@ -623,61 +623,6 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                                     <p className="text-[10px] text-muted-foreground opacity-70">
                                         * Recipient will get a summary email when workflow runs.
                                     </p>
-                                </div>
-                            </div>
-
-                            {/* Service Account Permission Helper */}
-                            <div className="space-y-2 p-3 bg-blue-500/5 rounded-lg border border-blue-500/20">
-                                <label className="text-xs font-semibold uppercase tracking-wider text-blue-400 flex items-center">
-                                    <Lock className="w-3 h-3 mr-1" /> Grant Access
-                                </label>
-                                <p className="text-[10px] text-muted-foreground mb-2">
-                                    If you use your own sheet, you must share it with this email as an <strong>Editor</strong>:
-                                </p>
-                                <div className="flex gap-2">
-                                    <code className="flex-1 bg-background/50 px-2 py-1 rounded text-[10px] font-mono truncate border border-border/50 flex items-center">
-                                        antigravity@antigravity-479502.iam.gserviceaccount.com
-                                    </code>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-7 text-[10px]"
-                                        onClick={() => {
-                                            navigator.clipboard.writeText("antigravity@antigravity-479502.iam.gserviceaccount.com");
-                                            alert("Email copied to clipboard!");
-                                        }}
-                                    >
-                                        Copy
-                                    </Button>
-                                    <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        className="h-7 text-[10px]"
-                                        onClick={async () => {
-                                            if (!sheetUrl) { alert("Enter a sheet URL first"); return; }
-                                            const btn = document.getElementById("check-access-btn");
-                                            if (btn) btn.innerText = "Checking...";
-
-                                            try {
-                                                const res = await fetch("/api/sheets/check-access", {
-                                                    method: "POST",
-                                                    body: JSON.stringify({ sheetUrl })
-                                                });
-                                                const data = await res.json();
-                                                if (data.success) {
-                                                    alert("✅ Success! We have Write Access to:\n" + data.title);
-                                                } else {
-                                                    alert("❌ Access Denied:\n" + data.error);
-                                                }
-                                            } catch (e) {
-                                                alert("Connection Error");
-                                            } finally {
-                                                if (btn) btn.innerText = "Check Access";
-                                            }
-                                        }}
-                                    >
-                                        <span id="check-access-btn">Check Access</span>
-                                    </Button>
                                 </div>
                             </div>
 
