@@ -21,18 +21,35 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
     useEffect(() => {
         const fetchConfig = async () => {
             try {
+                console.log("Fetching config for domain:", domain);
                 // Use hijacked verify endpoint
                 const res = await fetch(`/api/instantly/verify?domain=${domain}`, { cache: 'no-store' });
+                console.log("Fetch status:", res.status);
+
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.instantlyApiKey) setApiToken(data.instantlyApiKey);
+                    console.log("Fetched data:", data);
+
+                    if (data.instantlyApiKey) {
+                        console.log("Setting API Token:", data.instantlyApiKey);
+                        setApiToken(data.instantlyApiKey);
+                    } else {
+                        console.log("No API Token in response");
+                    }
+
                     if (data.googleSheetUrl) setSheetUrl(data.googleSheetUrl);
+                } else {
+                    console.error("Fetch failed:", await res.text());
                 }
             } catch (e) {
                 console.error("Failed to load config", e);
             }
         };
-        fetchConfig();
+        if (domain) {
+            fetchConfig();
+        } else {
+            console.warn("Domain is undefined in useEffect");
+        }
     }, [domain]);
 
     // Save config helper
@@ -443,7 +460,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                                                     const res = await fetch("/api/sheets/create", {
                                                         method: "POST",
                                                         body: JSON.stringify({
-                                                            title: `InboxBench - ${params.domain}`,
+                                                            title: `InboxBench - ${domain}`,
                                                             shareEmail: shareEmail
                                                         })
                                                     });
