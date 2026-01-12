@@ -43,7 +43,9 @@ ENV NODE_ENV=production
 # ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN apk add --no-cache openssl python3 py3-pip
+# Install Python dependencies and additional node modules
 RUN pip3 install requests google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client dnspython resend --break-system-packages
+RUN npm install @radix-ui/react-label
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
