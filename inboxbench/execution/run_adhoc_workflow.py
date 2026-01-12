@@ -103,8 +103,6 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
             "reply_rate": 0
         })
 
-        })
-
     # Fetch Tags Map
     try:
         tag_map = api.get_all_tags_map()

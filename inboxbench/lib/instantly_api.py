@@ -29,7 +29,6 @@ class InstantlyAPI:
             except:
                 pass
             return None
-            return None
 
     def _get_all(self, endpoint, params=None):
         """Helper to fetch ALL items using limit/skip pagination."""
