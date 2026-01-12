@@ -145,7 +145,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                     <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground">
                         Mission Control
                         <span className="text-primary ml-2 text-lg font-normal opacity-70 font-mono">
-                            / {params.domain}
+                            / {domain}
                         </span>
                     </h1>
                     <p className="text-muted-foreground">
