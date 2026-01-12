@@ -1,26 +1,105 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --color-background: hsl(222 47% 11%);
+  --color-foreground: hsl(210 40% 98%);
+
+  --color-card: hsl(217 33% 17%);
+  --color-card-foreground: hsl(210 40% 98%);
+
+  --color-popover: hsl(217 33% 17%);
+  --color-popover-foreground: hsl(210 40% 98%);
+
+  --color-primary: hsl(158 64% 52%);
+  --color-primary-foreground: hsl(164 86% 16%);
+
+  --color-secondary: hsl(215 25% 27%);
+  --color-secondary-foreground: hsl(210 40% 98%);
+
+  --color-muted: hsl(215 25% 27%);
+  --color-muted-foreground: hsl(215 20% 65%);
+
+  --color-accent: hsl(215 25% 27%);
+  --color-accent-foreground: hsl(158 64% 52%);
+
+  --color-destructive: hsl(0 84% 60%);
+  --color-destructive-foreground: hsl(210 40% 98%);
+
+  --color-border: hsl(215 25% 27%);
+  --color-input: hsl(215 25% 27%);
+  --color-ring: hsl(158 64% 52%);
+
+  --color-sidebar: hsl(222 84% 5%);
+  --color-sidebar-foreground: hsl(210 40% 98%);
+  --color-sidebar-primary: hsl(158 64% 52%);
+  --color-sidebar-primary-foreground: hsl(164 86% 16%);
+  --color-sidebar-accent: hsl(215 25% 27%);
+  --color-sidebar-accent-foreground: hsl(158 64% 52%);
+  --color-sidebar-border: hsl(215 25% 27%);
+  --color-sidebar-ring: hsl(158 64% 52%);
+
+  --radius-lg: 0.5rem;
+  --radius-md: calc(0.5rem - 2px);
+  --radius-sm: calc(0.5rem - 4px);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+@layer utilities {
+  .glass-panel {
+    @apply bg-card/80 backdrop-blur-md border border-border/50 shadow-lg;
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  .tech-border {
+    @apply border border-primary/20 relative;
+  }
+
+  .tech-border::after {
+    content: '';
+    @apply absolute top-0 right-0 w-2 h-2 border-t border-r border-primary opacity-50;
+  }
+
+  .tech-border::before {
+    content: '';
+    @apply absolute bottom-0 left-0 w-2 h-2 border-b border-l border-primary opacity-50;
+  }
+
+  .status-dot {
+    @apply w-2 h-2 rounded-full inline-block mr-2;
+  }
+
+  .status-dot.active {
+    @apply bg-primary;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+  }
+
+  .status-dot.error {
+    @apply bg-destructive;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* 
+  Backwards compatibility for code using CSS variables directly 
+  Some shadcn components might still rely on these being defined on :root
+*/
+:root {
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+  --card: 217 33% 17%;
+  --card-foreground: 210 40% 98%;
+  --popover: 217 33% 17%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 158 64% 52%;
+  --primary-foreground: 164 86% 16%;
+  --secondary: 215 25% 27%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 215 25% 27%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 215 25% 27%;
+  --accent-foreground: 158 64% 52%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 215 25% 27%;
+  --input: 215 25% 27%;
+  --ring: 158 64% 52%;
+  --radius: 0.5rem;
 }

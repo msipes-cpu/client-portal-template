@@ -1,0 +1,14 @@
+{
+    "instantly_api_key": "YTA5NTM0NzgtZTgzNC00OGFmLWJlZmMtNzdiMzkxZDg1ZGE2OkdFcEZHcFhZbFd6cA==",
+    "resend_api_key": "re_XFW9MKUo_Nfay47DCYcZXXatR2eS46x4M",
+    "agency_name": "Sipes Automation",
+    "reporting_email": "msipes@sipesautomation.com",
+    "slack_webhook_url": "",
+    "client_profiles": [
+        {
+            "tag_name": "Sipes Automation",
+            "client_name": "Sipes Automation (Internal)",
+            "google_sheet_id": "1qdWFdxmm8M8WlbrWZgLP5REI_pxwp_dq1MXWiwMFizw"
+        }
+    ]
+}

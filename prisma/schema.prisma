@@ -1,0 +1,26 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id               String   @id @default(uuid())
+  subdomain        String   @unique
+  client_name      String
+  project_name     String
+  status           String
+  progress_percent Int
+  current_phase    String
+  next_milestone   String
+  last_updated     String
+  blueprint_path   String?
+  instantly_api_key String?
+  google_sheet_url String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+}

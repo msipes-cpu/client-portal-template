@@ -1,0 +1,10 @@
+{
+    "project_name": "Automation Project",
+    "client_name": "Valued Client",
+    "status": "planning",
+    "progress_percent": 0,
+    "current_phase": "Phase 1: Discovery",
+    "next_milestone": "Blueprint Approval",
+    "last_updated": "2026-01-01",
+    "blueprint_path": "/blueprint.md"
+}
