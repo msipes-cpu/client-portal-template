@@ -10,11 +10,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lib.instantly_api import InstantlyAPI
 from execution.update_google_sheet import update_client_sheet
+from execution.send_email_report import send_email_report
 
 # Setup logging
 logging.basicConfig(stream=sys.stderr, level=logging.INFO, format='%(levelname)s: %(message)s')
 
-def run_adhoc_report(api_key, sheet_url):
+def run_adhoc_report(api_key, sheet_url, report_email=None):
     """
     Runs a report for ALL accounts in the workspace associated with the API key.
     Updates the Google Sheet if provided.
@@ -48,20 +49,45 @@ def run_adhoc_report(api_key, sheet_url):
     total_leads = 0
     
     processed_campaigns = []
-    for camp in campaigns:
-        # Get analytics (might be expensive for many campaigns, limits apply)
-        # For ad-hoc, maybe we just take summary if available or skip detailed analytics
-        # to avoid timeouts. The UI expects a quick response.
-        # Let's try fetching summary for top 5 active or just basic info
+    # Limit to top 15 campaigns to avoid timeout
+    for camp in campaigns[:15]:
+        camp_id = camp.get("id")
+        camp_name = camp.get("name")
         
-        # Simple parsing
+        # Fetch summary
+        success_stats = {"sent": 0, "opens": 0, "replies": 0, "leads": 0}
+        try:
+            summary = api.get_campaign_summary(camp_id)
+            if summary:
+                # API v2 might return different structure, handle safely
+                success_stats["sent"] = summary.get("contacts_contacted", 0)
+                success_stats["leads"] = summary.get("leads_count", 0)
+                
+                # If analytics endpoint returns arrays/time-series, we might need robust parsing
+                # But get_campaign_summary wrapper tries to handle it.
+                # Assuming summary has keys: emails_sent, opens, replies? 
+                # Actually v2 /campaigns/analytics returns: { start_date, end_date, items: [{...}] }
+                # Item keys: emails_sent, opens, replies, opportunities, etc.
+                
+                success_stats["sent"] = summary.get("emails_sent", 0)
+                success_stats["opens"] = summary.get("opens", 0)
+                success_stats["replies"] = summary.get("replies", 0)
+                success_stats["leads"] = summary.get("opportunities", 0) # Mapping leads to opportunities or leads_count
+                
+        except Exception as e:
+            logging.warning(f"Failed to fetch stats for {camp_name}: {e}")
+
+        total_sent += success_stats["sent"]
+        total_replies += success_stats["replies"]
+        total_leads += success_stats["leads"]
+
         processed_campaigns.append({
-            "name": camp.get("name"),
+            "name": camp_name,
             "status": camp.get("status_v2", camp.get("status")),
-            "sent": 0, # Placeholder to avoid N+1 API calls delay
-            "opens": 0,
-            "replies": 0,
-            "click_rate": 0,
+            "sent": success_stats["sent"],
+            "opens": success_stats["opens"],
+            "replies": success_stats["replies"],
+            "click_rate": 0, # Calculate if needed
             "reply_rate": 0
         })
 
@@ -100,18 +126,42 @@ def run_adhoc_report(api_key, sheet_url):
         except Exception as e:
             logging.error(f"Sheet Update Error: {e}")
 
+    # 5. Send Email Report
+    email_sent = False
+    if report_email:
+        resend_key = os.environ.get("RESEND_API_KEY")
+        if resend_key:
+            # Construct a "Full Report" structure that send_email_report expects
+            full_report_struct = {
+                "client_reports": [{
+                    "client_name": "Ad-Hoc Run",
+                    "client_tag": "All",
+                    "summary": {
+                        "total_accounts": len(accounts),
+                        "total_campaigns": len(campaigns),
+                        "accounts_with_issues": sum(1 for a in processed_accounts if "Sick" in str(a.get("status", ""))) # Rough heuristic
+                    },
+                    "campaigns_data": processed_campaigns
+                }]
+            }
+            email_sent = send_email_report(resend_key, report_email, "InboxBench User", full_report_struct)
+        else:
+             logging.warning("RESEND_API_KEY not found. Skipping email.")
+
     return {
         "success": True,
         "accounts_count": len(accounts),
         "campaigns_count": len(campaigns),
-        "sheet_updated": sheet_updated
+        "sheet_updated": sheet_updated,
+        "email_sent": email_sent
     }
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--key", required=True)
     parser.add_argument("--sheet", required=False)
+    parser.add_argument("--report_email", required=False)
     args = parser.parse_args()
     
-    result = run_adhoc_report(args.key, args.sheet)
+    result = run_adhoc_report(args.key, args.sheet, args.report_email)
     print(json.dumps(result))
