@@ -4,7 +4,8 @@ import { useState, useEffect, use } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Play, Calendar, AlertTriangle, CheckCircle2, Bot, Link as LinkIcon, Lock, Search, Filter, MailCheck, FileSpreadsheet, ArrowRight } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Play, Calendar, AlertTriangle, CheckCircle2, Bot, Link as LinkIcon, Lock, Search, Filter, MailCheck, FileSpreadsheet, ArrowRight, Loader2, Zap } from "lucide-react";
 
 export default function ClientDashboard({ params }: { params: Promise<{ domain: string }> }) {
     const { domain } = use(params);
@@ -297,19 +298,37 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                                     />
                                 </div>
 
-                                <div className="space-y-3">
-                                    <label className="text-sm font-medium text-muted-foreground">Manual Override</label>
+                                <div className="flex flex-col space-y-2">
+                                    <Label className="text-zinc-400">Run Automation</Label>
                                     <Button
-                                        className={`w-full justify-between group ${isTesting ? "opacity-80" : ""}`}
                                         onClick={handleTestWorkflow}
-                                        disabled={isTesting}
+                                        disabled={isTesting || !apiToken}
+                                        className={`w-full h-10 font-medium transition-all duration-300 relative overflow-hidden group ${isTesting
+                                            ? 'bg-zinc-800 text-zinc-400 cursor-not-allowed border-zinc-700/50'
+                                            : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20 hover:border-emerald-500/30'
+                                            } border backdrop-blur-sm`}
                                     >
-                                        <span className="flex items-center">
-                                            <Play className={`w-4 h-4 mr-2 ${isTesting ? "animate-spin" : "group-hover:text-white transition-colors"}`} />
-                                            {isTesting ? "Running Workflow..." : "Test Workflow Now"}
-                                        </span>
-                                        {!isTesting && <span className="font-mono text-xs opacity-50">dev_mode</span>}
+                                        <div className="flex items-center justify-center gap-2 relative z-10">
+                                            {isTesting ? (
+                                                <>
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                    <span>Running Automation...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Zap className="h-4 w-4 group-hover:scale-110 transition-transform duration-300" />
+                                                    <span>Run Automation</span>
+                                                </>
+                                            )}
+                                        </div>
+
+                                        {!isTesting && (
+                                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-emerald-500/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                                        )}
                                     </Button>
+                                    <p className="text-[10px] text-zinc-500 text-center">
+                                        {isTesting ? "Fetching data & updating sheet..." : "Triggers verification & reporting workflow"}
+                                    </p>
                                 </div>
                             </div>
                         </CardContent>
