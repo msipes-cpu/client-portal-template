@@ -182,6 +182,26 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
                 "-",
                 "-"
             ])
+            
+            # Determine Change Display for Tab
+            # Try to find previous status tag
+            prev_tag = "-"
+            for t in acc.get("tags_resolved", []):
+                if t.startswith("status-") and t != new_tag:
+                    prev_tag = t
+                    break
+            
+            # If no previous stat tag found, maybe use mapped status?
+            # Or just show "-> NewTag"
+            if prev_tag == "-":
+                change_display = f"-> {new_tag}"
+            else:
+                 # Format: status-active -> status-sick => Active -> Sick
+                p_clean = prev_tag.replace("status-", "").capitalize()
+                n_clean = new_tag.replace("status-", "").capitalize()
+                change_display = f"{p_clean} -> {n_clean}"
+        else:
+            change_display = "-"
         
         # 3. Format Strings for Sheet
         tags_str = ", ".join(final_tags)
@@ -191,7 +211,8 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
             "status": final_status,
             "daily_limit": acc.get("limit", 0),
             "warmup_score": f"{acc.get('stat_warmup_score', 0)}/100",
-            "tags": tags_str
+            "tags": tags_str,
+            "change": change_display
         })
 
     report_data = {

@@ -129,7 +129,7 @@ def update_client_sheet(client_data, spreadsheet_id):
             ])
         
         # 3. Account Health
-        account_header = ["Email", "Status", "Daily Limit", "Warmup Score", "Tags"]
+        account_header = ["Email", "Status", "Daily Limit", "Warmup Score", "Tags", "Change"]
         account_rows = []
         for acc in client_data.get('accounts', []):
             account_rows.append([
@@ -137,7 +137,8 @@ def update_client_sheet(client_data, spreadsheet_id):
                 acc.get('status', 'Unknown'),
                 acc.get('daily_limit', 0),
                 f"{acc.get('warmup_score', 'N/A')}",
-                acc.get('tags', '')
+                acc.get('tags', ''),
+                acc.get('change', '-')
             ])
 
         # Prepare Data for Tabs
