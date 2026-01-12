@@ -21,7 +21,17 @@ def get_credentials():
         creds_dict = json.loads(creds_json)
         creds = service_account.Credentials.from_service_account_info(
             creds_dict, scopes=SCOPES)
-        return creds
+        
+        # KEY FIX: Impersonate the admin user just like in creation
+        # This gives access to sheets owned by msipes@sipesautomation.com
+        try:
+            delegated_creds = creds.with_subject('msipes@sipesautomation.com')
+            logging.info("Impersonating msipes@sipesautomation.com for sheet update...")
+            return delegated_creds
+        except Exception as ignored:
+            logging.warning(f"Impersonation failed in update, using SA: {ignored}")
+            return creds
+
     except Exception as e:
         logging.error(f"Error loading credentials from env: {e}")
         return None
