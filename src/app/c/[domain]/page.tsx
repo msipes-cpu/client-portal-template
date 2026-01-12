@@ -75,18 +75,20 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
         }
     };
 
-    const handleTestWorkflow = async () => {
-        // Validation: Ensure Sheet URL exists
-        let activeSheetUrl = sheetUrl;
+    const [progress, setProgress] = useState(0);
+    const [progressMessage, setProgressMessage] = useState("");
 
+    const handleTestWorkflow = async () => {
+        let activeSheetUrl = sheetUrl;
         if (!activeSheetUrl) {
+            // ... (existing prompt logic omitted for brevity, logic remains same)
+            // Ideally should reuse existing logic, but for simplicity of replacement, I assume previously verified logic or prompt
+            // RE-INSERTING THE PROMPT LOGIC CAREFULLY
             const emailForSheet = prompt("We created this Google Sheet. Where would you like us to share it?\n\nWhat email address would you like us to share with so that you get your report?");
 
             if (emailForSheet) {
                 try {
-                    // Temporarily show creating status
                     const btn = document.getElementById('create-sheet-btn');
-
                     const createRes = await fetch("/api/sheets/create", {
                         method: "POST",
                         body: JSON.stringify({
@@ -100,26 +102,27 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                         setSheetUrl(createData.sheet_url);
                         setShareEmail(emailForSheet);
                         setReportEmail(emailForSheet);
-
-                        // Sync and save everything
                         saveConfig(undefined, createData.sheet_url, emailForSheet, emailForSheet);
-
-                        activeSheetUrl = createData.sheet_url; // Set for immediate use
+                        activeSheetUrl = createData.sheet_url;
                         alert(`Sheet created and shared with ${createData.shared_with}`);
                     } else {
-                        alert("Failed to automaticall create sheet: " + (createData.error || "Unknown error"));
-                        return; // Stop if creation failed
+                        alert("Failed to automatically create sheet: " + (createData.error || "Unknown error"));
+                        return;
                     }
                 } catch (e) {
                     alert("Error creating sheet automatically.");
                     return;
                 }
             } else {
-                return; // User cancelled
+                return;
             }
         }
 
         setIsTesting(true);
+        setStatus("working");
+        setProgress(0);
+        setProgressMessage("Initializing...");
+
         try {
             const res = await fetch("/api/instantly/run", {
                 method: "POST",
@@ -130,15 +133,49 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                     reportEmail: reportEmail
                 })
             });
-            const data = await res.json();
 
-            if (data.success) {
-                setStatus("working");
-                setExecutions(prev => prev + 1);
-            } else {
-                setStatus("error");
-                alert("Workflow Error: " + data.error);
+            if (!res.body) throw new Error("No response body");
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+
+                // Keep the last part if incomplete
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const event = JSON.parse(line);
+
+                        if (event.type === "progress") {
+                            setProgress(event.percent);
+                            setProgressMessage(event.message);
+                        } else if (event.type === "result") {
+                            // Success!
+                            setExecutions(prev => prev + 1);
+                            setStatus("working");
+                            setProgress(100);
+                            setProgressMessage("Completed Successfully!");
+                        } else if (event.type === "error") {
+                            setStatus("error");
+                            alert("Workflow Error: " + event.message);
+                            setIsTesting(false);
+                            return; // Stop processing
+                        }
+                    } catch (e) {
+                        console.warn("Failed to parse event:", line);
+                    }
+                }
             }
+
         } catch (e) {
             setStatus("error");
             alert("Network Error");
@@ -327,8 +364,17 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                                         )}
                                     </Button>
                                     <p className="text-[10px] text-zinc-500 text-center">
-                                        {isTesting ? "Fetching data & updating sheet..." : "Triggers verification & reporting workflow"}
+                                        {isTesting ? progressMessage : "Triggers verification & reporting workflow"}
                                     </p>
+
+                                    {isTesting && (
+                                        <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden mt-2">
+                                            <div
+                                                className="h-full bg-emerald-500 transition-all duration-300 ease-out"
+                                                style={{ width: `${progress}%` }}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </CardContent>

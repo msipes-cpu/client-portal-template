@@ -12,45 +12,68 @@ from lib.instantly_api import InstantlyAPI
 from execution.update_google_sheet import update_client_sheet
 from execution.send_email_report import send_email_report
 
-# Setup logging
+# Setup logging to STDERR so it doesn't interfere with STDOUT JSON stream
 logging.basicConfig(stream=sys.stderr, level=logging.INFO, format='%(levelname)s: %(message)s')
+
+def emit_status(step, message, percent):
+    """Emits a JSON status update to stdout"""
+    data = {
+        "type": "progress",
+        "step": step,
+        "message": message,
+        "percent": percent
+    }
+    print(json.dumps(data), flush=True)
 
 def run_adhoc_report(api_key, sheet_url, report_email=None):
     """
-    Runs a report for ALL accounts in the workspace associated with the API key.
-    Updates the Google Sheet if provided.
+    Runs a report for ALL accounts in the workspace.
+    Streams progress updates to stdout.
     """
-    logging.info("Starting Ad-Hoc Report Workflow...")
+    emit_status("init", "Starting Ad-Hoc Report Workflow...", 5)
     
-    api = InstantlyAPI(api_key)
-    
-    # 1. Fetch ALL Accounts
-    # We skip tag filtering to support "whole workspace" view for this ad-hoc tool
     try:
-        logging.info("Fetching accounts...")
+        api = InstantlyAPI(api_key)
+        
+        # 1. Fetch ALL Accounts
+        emit_status("fetch_accounts", "Fetching accounts from Instantly...", 10)
         accounts_data = api.list_accounts()
         accounts = accounts_data.get("items", []) if isinstance(accounts_data, dict) else accounts_data
         if not accounts: accounts = []
         logging.info(f"Found {len(accounts)} accounts.")
         
         # 2. Fetch ALL Campaigns
-        logging.info("Fetching campaigns...")
+        emit_status("fetch_campaigns", f"Fetching campaigns (Found {len(accounts)} accounts)...", 20)
         campaigns_data = api.list_campaigns()
         campaigns = campaigns_data.get("items", []) if isinstance(campaigns_data, dict) else campaigns_data
         if not campaigns: campaigns = []
         logging.info(f"Found {len(campaigns)} campaigns.")
 
     except Exception as e:
-        return {"success": False, "error": f"API Fetch Failed: {e}"}
+        err_msg = f"API Fetch Failed: {e}"
+        logging.error(err_msg)
+        return {"success": False, "error": err_msg}
 
     # 3. Analyze Data
+    emit_status("analyzing", f"Analyzing {len(campaigns)} campaigns...", 30)
     total_sent = 0
     total_replies = 0
     total_leads = 0
     
     processed_campaigns = []
     # Limit to top 15 campaigns to avoid timeout
-    for camp in campaigns[:15]:
+    
+    count = 0
+    max_camps = 15
+    camps_to_process = campaigns[:max_camps]
+    total_camps_count = len(camps_to_process)
+
+    for camp in camps_to_process:
+        count += 1
+        # Update progress within the analysis phase (30% to 70%)
+        progress_val = 30 + int((count / total_camps_count) * 40)
+        emit_status("analyzing_campaign", f"Analyzing campaign: {camp.get('name')}...", progress_val)
+        
         camp_id = camp.get("id")
         camp_name = camp.get("name")
         
@@ -59,21 +82,10 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
         try:
             summary = api.get_campaign_summary(camp_id)
             if summary:
-                # API v2 might return different structure, handle safely
-                success_stats["sent"] = summary.get("contacts_contacted", 0)
-                success_stats["leads"] = summary.get("leads_count", 0)
-                
-                # If analytics endpoint returns arrays/time-series, we might need robust parsing
-                # But get_campaign_summary wrapper tries to handle it.
-                # Assuming summary has keys: emails_sent, opens, replies? 
-                # Actually v2 /campaigns/analytics returns: { start_date, end_date, items: [{...}] }
-                # Item keys: emails_sent, opens, replies, opportunities, etc.
-                
-                success_stats["sent"] = summary.get("emails_sent", 0)
+                success_stats["sent"] = summary.get("contacts_contacted", summary.get("emails_sent", 0))
                 success_stats["opens"] = summary.get("opens", 0)
                 success_stats["replies"] = summary.get("replies", 0)
-                success_stats["leads"] = summary.get("opportunities", 0) # Mapping leads to opportunities or leads_count
-                
+                success_stats["leads"] = summary.get("leads_count", summary.get("opportunities", 0))
         except Exception as e:
             logging.warning(f"Failed to fetch stats for {camp_name}: {e}")
 
@@ -87,7 +99,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
             "sent": success_stats["sent"],
             "opens": success_stats["opens"],
             "replies": success_stats["replies"],
-            "click_rate": 0, # Calculate if needed
+            "click_rate": 0, 
             "reply_rate": 0
         })
 
@@ -115,13 +127,15 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
     sheet_updated = False
     sheet_error = None
     if sheet_url:
-        # Extract ID from URL
-        # https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit...
+        emit_status("updating_sheet", "Writing data to Google Sheet...", 80)
         try:
             if "/d/" in sheet_url:
                 sheet_id = sheet_url.split("/d/")[1].split("/")[0]
                 logging.info(f"Updating Sheet ID: {sheet_id}")
                 sheet_updated, sheet_error = update_client_sheet(report_data, sheet_id)
+                if not sheet_updated:
+                    # If explicitly returned false, ensure we pass the error
+                    if not sheet_error: sheet_error = "Unknown writing error"
             else:
                 logging.warning("Invalid Sheet URL format.")
                 sheet_error = "Invalid Sheet URL format"
@@ -129,13 +143,13 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
             logging.error(f"Sheet Update Error: {e}")
             sheet_error = str(e)
     
-    # 5. Send Email Report (if requested)
+    # 5. Send Email Report
     email_sent = False
     email_error = None
     if report_email:
+        emit_status("sending_email", f"Sending report to {report_email}...", 90)
         resend_key = os.environ.get("RESEND_API_KEY")
         if resend_key:
-            # Construct a "Full Report" structure that send_email_report expects
             full_report_struct = {
                 "client_reports": [{
                     "client_name": "Ad-Hoc Run",
@@ -149,7 +163,6 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
                 }]
             }
             try:
-                logging.info(f"Sending email report to {report_email}...")
                 email_sent, email_error = send_email_report(resend_key, report_email, "InboxBench User", full_report_struct)
             except Exception as e:
                 logging.error(f"Email Report Logic Error: {e}")
@@ -158,6 +171,8 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
              logging.warning("RESEND_API_KEY not found. Skipping email.")
              email_error = "RESEND_API_KEY not found"
 
+    emit_status("complete", "Workflow Complete!", 100)
+    
     return {
         "success": True,
         "accounts_count": len(accounts),
@@ -174,5 +189,12 @@ if __name__ == "__main__":
     parser.add_argument("--report_email", required=False)
     args = parser.parse_args()
     
-    result = run_adhoc_report(args.key, args.sheet, args.report_email)
-    print(json.dumps(result))
+    try:
+        result = run_adhoc_report(args.key, args.sheet, args.report_email)
+        # Final output for the API to capture as the "Result"
+        print(json.dumps({"type": "result", "data": result}), flush=True)
+    except Exception as e:
+        # Catch-all for top-level script errors
+        error_json = {"type": "error", "message": f"Critical Script Crash: {str(e)}"}
+        print(json.dumps(error_json), flush=True)
+        sys.exit(1)

@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import path from 'path';
-import util from 'util';
-
-const execAsync = util.promisify(exec);
 
 export async function POST(req: Request) {
     try {
@@ -21,31 +18,54 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, error: "Invalid characters in token" }, { status: 400 });
         }
 
-        let command = `python3 "${scriptPath}" --key "${token}"`;
+        const args = ["-u", scriptPath, "--key", token]; // -u for unbuffered python output
         if (sheetUrl) {
-            // Basic sanitation for URL (remove quotes)
             const cleanUrl = sheetUrl.replace(/["']/g, "");
-            command += ` --sheet "${cleanUrl}"`;
+            args.push("--sheet", cleanUrl);
         }
         if (reportEmail) {
             const cleanEmail = reportEmail.replace(/["' ]/g, "");
-            command += ` --report_email "${cleanEmail}"`;
+            args.push("--report_email", cleanEmail);
         }
 
-        const { stdout, stderr } = await execAsync(command);
+        const encoder = new TextEncoder();
 
-        try {
-            const result = JSON.parse(stdout.trim());
-            return NextResponse.json(result);
-        } catch (parseError) {
-            console.error("Parse Error:", stdout);
-            return NextResponse.json({
-                success: false,
-                error: "Failed to parse script output",
-                details: stdout,
-                stderr: stderr
-            }, { status: 500 });
-        }
+        const stream = new ReadableStream({
+            start(controller) {
+                const child = spawn('python3', args);
+
+                child.stdout.on('data', (data) => {
+                    controller.enqueue(data);
+                });
+
+                child.stderr.on('data', (data) => {
+                    console.error(`[Python Stderr]: ${data}`);
+                });
+
+                child.on('close', (code) => {
+                    if (code !== 0) {
+                        console.error(`Process exited with code ${code}`);
+                        const exitMsg = JSON.stringify({ type: "error", message: `Process exited with code ${code}` });
+                        controller.enqueue(encoder.encode(exitMsg + "\n"));
+                    }
+                    controller.close();
+                });
+
+                child.on('error', (err) => {
+                    console.error("Spawn Error:", err);
+                    const errMsg = JSON.stringify({ type: "error", message: "Spawn Failed: " + err.message });
+                    controller.enqueue(encoder.encode(errMsg + "\n"));
+                    controller.close();
+                });
+            }
+        });
+
+        return new Response(stream, {
+            headers: {
+                'Content-Type': 'text/plain; charset=utf-8',
+                'X-Content-Type-Options': 'nosniff',
+            },
+        });
 
     } catch (error: any) {
         return NextResponse.json({
