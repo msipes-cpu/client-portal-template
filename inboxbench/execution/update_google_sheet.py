@@ -12,29 +12,56 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SERVICE_ACCOUNT_FILE = '../../credentials.json'
 
 def get_credentials():
-    """Locate and load service account credentials from env var."""
+    """Locate and load service account credentials from env var or local file."""
+    creds = None
+    
+    # 1. Try Environment Variable
     creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-    if not creds_json:
-        logging.error("GOOGLE_CREDENTIALS_JSON environment variable not found.")
-        return None
-    try:
-        creds_dict = json.loads(creds_json)
-        creds = service_account.Credentials.from_service_account_info(
-            creds_dict, scopes=SCOPES)
-        
-        # KEY FIX: Impersonate the admin user just like in creation
-        # This gives access to sheets owned by msipes@sipesautomation.com
+    if creds_json:
         try:
-            delegated_creds = creds.with_subject('msipes@sipesautomation.com')
-            logging.info("Impersonating msipes@sipesautomation.com for sheet update...")
-            return delegated_creds
-        except Exception as ignored:
-            logging.warning(f"Impersonation failed in update, using SA: {ignored}")
-            return creds
+            creds_dict = json.loads(creds_json)
+            creds = service_account.Credentials.from_service_account_info(
+                creds_dict, scopes=SCOPES)
+        except Exception as e:
+            logging.error(f"Failed to load credentials from ENV: {e}")
 
-    except Exception as e:
-        logging.error(f"Error loading credentials from env: {e}")
+    # 2. Try Local File (Fallback)
+    if not creds:
+        # Resolve path relative to this script
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        file_path = os.path.join(base_dir, '../../credentials.json')
+        
+        # Check absolute path fallback (common in workspace)
+        if not os.path.exists(file_path):
+             # Try workspace root if we are in a subdirectory structure
+             file_path = os.path.abspath(os.path.join(base_dir, "../../../credentials.json"))
+
+        if os.path.exists(file_path):
+            try:
+                logging.info(f"Loading credentials from file: {file_path}")
+                creds = service_account.Credentials.from_service_account_file(
+                    file_path, scopes=SCOPES)
+            except Exception as e:
+                logging.error(f"Failed to load credentials from file: {e}")
+        else:
+             logging.warning(f"Credentials file not found at: {file_path}")
+
+    if not creds:
+        logging.error("No valid Google Cloud credentials found (ENV or File).")
         return None
+
+    # 3. Apply Impersonation (CRITICAL)
+    try:
+        delegated_creds = creds.with_subject('msipes@sipesautomation.com')
+        # Test the delegation by making a lightweight call or just assume success?
+        # Typically we just return the object. Access errors happen at usage time.
+        logging.info("Impersonating msipes@sipesautomation.com for sheet update...")
+        return delegated_creds
+    except Exception as e:
+        # This catch block rarely fires for just *creating* the object, 
+        # errors usually happen when making a request.
+        logging.warning(f"Impersonation setup failed (fallback to SA): {e}")
+        return creds
 
 def update_client_sheet(client_data, spreadsheet_id):
     """
