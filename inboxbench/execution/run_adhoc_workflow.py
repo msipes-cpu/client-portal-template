@@ -136,9 +136,11 @@ def run_adhoc_report(api_key, sheet_url, report_email=None):
                 if not sheet_updated:
                     # If explicitly returned false, ensure we pass the error
                     if not sheet_error: sheet_error = "Unknown writing error"
+                    emit_status("warning", f"Sheet Update Failed: {sheet_error}", 85)
             else:
                 logging.warning("Invalid Sheet URL format.")
                 sheet_error = "Invalid Sheet URL format"
+                emit_status("warning", "Skipped Sheet Update: Invalid URL format", 85)
         except Exception as e:
             logging.error(f"Sheet Update Error: {e}")
             sheet_error = str(e)

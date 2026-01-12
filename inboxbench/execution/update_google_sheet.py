@@ -46,6 +46,23 @@ def update_client_sheet(client_data, spreadsheet_id):
     try:
         service = build('sheets', 'v4', credentials=creds)
         
+        # dynamic tab name resolution
+        sheet_metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        sheets = sheet_metadata.get('sheets', [])
+        
+        target_sheet_title = 'Sheet1' # Default fallback
+        if sheets:
+            # logic: look for 'Report', else use the first one
+            titles = [s['properties']['title'] for s in sheets]
+            if 'Report' in titles:
+                target_sheet_title = 'Report'
+            elif 'Sheet1' in titles:
+                target_sheet_title = 'Sheet1'
+            else:
+                target_sheet_title = titles[0] # Use the very first sheet if defaults mismatch
+        
+        logging.info(f"Targeting sheet tab: '{target_sheet_title}'")
+        
         # Prepare data for the distinct tables
         # 1. Overview
         overview_data = [
@@ -86,11 +103,7 @@ def update_client_sheet(client_data, spreadsheet_id):
             ])
 
         # Batch Update Request
-        # We will clear the sheet first or just overwrite. Overwriting is safer to preserve other tabs if they exist.
-        # But for simplicity, we'll clear 'Sheet1' (or whatever main tab) and write.
-        
-        # Let's assume a 'Report' tab. If not exists, write to first tab.
-        range_name = 'Sheet1!A1' 
+        range_name = f"'{target_sheet_title}'!A1" 
 
         # Construct the full list of values to write
         # Overview
@@ -115,7 +128,7 @@ def update_client_sheet(client_data, spreadsheet_id):
 
         # Clear existing content first to avoid artifacts
         service.spreadsheets().values().clear(
-            spreadsheetId=spreadsheet_id, range='Sheet1'
+            spreadsheetId=spreadsheet_id, range=f"'{target_sheet_title}'"
         ).execute()
 
         # Update
