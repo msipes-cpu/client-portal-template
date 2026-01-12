@@ -299,7 +299,14 @@ export default function ClientDashboard({ params }: { params: { domain: string }
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-muted-foreground">Instantly API Token</label>
+                                <label className="text-sm font-medium text-muted-foreground flex justify-between">
+                                    Instantly API Token
+                                    {apiToken && (
+                                        <span className="text-xs text-green-500 flex items-center bg-green-500/10 px-2 rounded-full border border-green-500/20">
+                                            <Lock className="w-3 h-3 mr-1" /> Saved
+                                        </span>
+                                    )}
+                                </label>
                                 <Input
                                     type="password"
                                     placeholder="ey..."

@@ -41,19 +41,32 @@ export async function PUT(req: Request) {
         if (instantlyApiKey !== undefined) updateData.instantly_api_key = instantlyApiKey;
         if (googleSheetUrl !== undefined) updateData.google_sheet_url = googleSheetUrl;
 
-        await prisma.project.update({
+        // Upsert ensures the project exists even if not seeded
+        await prisma.project.upsert({
             where: { subdomain: domain },
-            data: updateData
+            update: updateData,
+            create: {
+                subdomain: domain,
+                client_name: domain.charAt(0).toUpperCase() + domain.slice(1), // Fallback name
+                project_name: "Verification Project",
+                status: "active",
+                progress_percent: 0,
+                current_phase: "setup",
+                next_milestone: "init",
+                last_updated: new Date().toISOString(),
+                ...updateData
+            }
         });
 
         return NextResponse.json({ success: true });
     } catch (e) {
+        console.error("Config save error:", e);
         return NextResponse.json({ error: 'Update error' }, { status: 500 });
     }
 }
 
 export async function POST(req: Request) {
-    console.log("VERSION CHECK: 2.0 - POST HANDLER");
+    // ... existing POST logic ...
     // ... existing POST logic ...
     try {
         const { token } = await req.json();
