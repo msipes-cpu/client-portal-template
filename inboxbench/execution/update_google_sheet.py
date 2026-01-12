@@ -8,7 +8,10 @@ from googleapiclient.errors import HttpError
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
+]
 SERVICE_ACCOUNT_FILE = '../../credentials.json'
 
 def get_credentials():
@@ -166,11 +169,43 @@ def update_client_sheet(client_data, spreadsheet_id):
         return True, None
 
     except HttpError as err:
+        error_reason = str(err)
+        # Check for 403 or 404
+        status_code = 0
+        if hasattr(err, 'resp') and hasattr(err.resp, 'status'):
+             status_code = err.resp.status
+        
+        if status_code in [403, 404] or "PERMISSION_DENIED" in error_reason:
+            logging.warning(f"Permission Error ({status_code}). Attempting fallback to NEW sheet...")
+            try:
+                new_title = f"InboxBench Report - {client_data.get('client_name')}"
+                new_id, new_url = create_and_share_sheet(new_title)
+                logging.info(f"Created NEW Sheet: {new_url}")
+                
+                # Recursive retry with new ID
+                success, error = update_client_sheet(client_data, new_id)
+                
+                if success:
+                    return True, new_url
+                else:
+                    return False, f"Fallback created {new_url} but write failed: {error}"
+            except Exception as e2:
+                logging.error(f"Fallback failed: {e2}")
+                return False, f"Original: {error_reason} | Fallback: {str(e2)}"
+
         logging.error(f"Google Sheets API Error: {err}")
         return False, str(err)
     except Exception as e:
         logging.error(f"Unexpected error in update_client_sheet: {e}")
         return False, str(e)
+
+def create_and_share_sheet(title, share_email=None):
+    """Creates a new spreadsheet."""
+    creds = get_credentials()
+    service = build('sheets', 'v4', credentials=creds)
+    spreadsheet = {'properties': {'title': title}}
+    spreadsheet = service.spreadsheets().create(body=spreadsheet, fields='spreadsheetId,spreadsheetUrl').execute()
+    return spreadsheet.get('spreadsheetId'), spreadsheet.get('spreadsheetUrl')
 
 def write_to_tab(service, spreadsheet_id, tab_name, data, mode="OVERWRITE"):
     """

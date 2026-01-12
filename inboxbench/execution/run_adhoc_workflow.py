@@ -269,16 +269,34 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
                 # Update Snapshot (Main Report) + Summary Table? 
                 # Ideally we append a summary table to the snapshot. 
                 # For now let's keep Snapshot clean and just ensure Action Log is populated.
-                sheet_updated, sheet_error = update_client_sheet(report_data, sheet_id)
+                sheet_updated, result_val = update_client_sheet(report_data, sheet_id)
                 
+                # Check if fallback occurred (Success + URL returned)
+                if sheet_updated and result_val and "https" in str(result_val):
+                     # Parse new Sheet ID to ensure Action Log goes to the right place
+                     try:
+                         sheet_id = result_val.split("/d/")[1].split("/")[0]
+                         logging.info(f"Failed to write to original. Created NEW Sheet: {sheet_id}")
+                         emit_status("warning", f"Original sheet locked. Created NEW Sheet -> {result_val}", 82)
+                         # Store this to return in result so main result shows the switch
+                         sheet_error = f"Created NEW Sheet: {result_val}" 
+                     except:
+                         logging.warning("Could not parse new ID")
+
+                elif not sheet_updated:
+                     sheet_error = result_val
+
                 # Update Action Log (Append)
-                if actions_log:
+                if actions_log and sheet_updated:
                     logging.info(f"Appending {len(actions_log)} actions to log...")
                     # Re-instantiate service 
                     creds = get_credentials()
                     if creds:
                         service = build('sheets', 'v4', credentials=creds)
-                        write_to_tab(service, sheet_id, "Action Log", actions_log, mode="APPEND")
+                        try:
+                            write_to_tab(service, sheet_id, "Action Log", actions_log, mode="APPEND")
+                        except Exception as e:
+                            logging.warning(f"Failed to append logs: {e}")
                 
                 if not sheet_updated:
                     if not sheet_error: sheet_error = "Unknown writing error"
