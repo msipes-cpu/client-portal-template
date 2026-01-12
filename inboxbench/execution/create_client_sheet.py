@@ -15,7 +15,23 @@ IMPERSONATED_USER = "msipes@sipesautomation.com"
 
 # Locate credentials
 def get_service():
-    # Try multiple locations for credentials
+    auth_debug = []
+    
+    # Try env var for raw JSON content first
+    json_creds = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+    if json_creds:
+        try:
+            info = json.loads(json_creds)
+            creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+            creds = creds.with_subject(IMPERSONATED_USER)
+            return build('sheets', 'v4', credentials=creds)
+        except Exception as e:
+            auth_debug.append(f"Env var load failed: {str(e)}")
+            logging.warning(f"Failed to load creds from env var: {e}")
+    else:
+        auth_debug.append("GOOGLE_CREDENTIALS_JSON not set")
+
+    # Try multiple locations for credentials file
     candidates = [
         "credentials.json",
         "../credentials.json",
@@ -32,19 +48,26 @@ def get_service():
                 creds = creds.with_subject(IMPERSONATED_USER)
                 break
             except Exception as e:
+                auth_debug.append(f"File {c} load failed: {str(e)}")
                 logging.warning(f"Failed to load creds from {c}: {e}")
                 continue
+        else:
+            auth_debug.append(f"File {c} not found")
     
     if not creds:
         logging.error("Could not find valid credentials.json")
-        return None
-
+        return {"error": "Authentication failed", "debug": auth_debug}
+    
     return build('sheets', 'v4', credentials=creds)
 
 def create_sheet(title):
-    service = get_service()
+    service_result = get_service()
+    if isinstance(service_result, dict) and "error" in service_result:
+         return {"success": False, "error": service_result["error"], "debug": service_result.get("debug")}
+    
+    service = service_result
     if not service:
-        return {"success": False, "error": "Authentication failed"}
+        return {"success": False, "error": "Authentication failed (Service None)"}
 
     try:
         logging.info(f"Creating sheet '{title}' as {IMPERSONATED_USER}...")
