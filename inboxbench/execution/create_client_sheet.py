@@ -73,10 +73,36 @@ def create_sheet(title):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
     parser.add_argument("--title", default="InboxBench Verification Report")
+    parser.add_argument("--share_email", help="Email address to share the sheet with")
     args = parser.parse_args()
     
     result = create_sheet(args.title)
+    
+    if result["success"] and args.share_email:
+        # Share the sheet
+        try:
+            drive_service = build('drive', 'v3', credentials=get_service()._credentials) 
+            # Note: get_service returns sheets service, we reuse creds
+            
+            permission = {
+                'type': 'user',
+                'role': 'writer',
+                'emailAddress': args.share_email
+            }
+            
+            drive_service.permissions().create(
+                fileId=result["sheet_id"],
+                body=permission,
+                fields='id',
+                sendNotificationEmail=True
+            ).execute()
+            
+            result["shared_with"] = args.share_email
+            logging.info(f"Shared with {args.share_email}")
+            
+        except Exception as share_error:
+            logging.error(f"Failed to share: {share_error}")
+            result["share_error"] = str(share_error)
+
     print(json.dumps(result))
