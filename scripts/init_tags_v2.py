@@ -42,7 +42,7 @@ def init_tags_v2():
             print(f"✓ '{label}' already exists.")
 
     # 4. Delete Old "status-" Tags (Validation)
-    legacy_keys = ["status-", "Active", "Dead"] # Clean up Active and Dead too
+    legacy_keys = ["status-", "Active", "Dead", "IB_VERIFY_"] # Clean up Active, Dead, and Test tags
     
     print("\n--- Cleanup Legacy Tags ---")
     for label, tid in existing_map.items():
@@ -50,7 +50,7 @@ def init_tags_v2():
         should_delete = False
         if label in ["Active", "Dead"]:
              should_delete = True
-        elif any(label.startswith(p) for p in legacy_keys if p == "status-"):
+        elif any(label.startswith(p) for p in legacy_keys if p in ["status-", "IB_VERIFY_"]):
              should_delete = True
 
         if should_delete:
