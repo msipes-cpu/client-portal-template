@@ -170,7 +170,16 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                         } else if (event.type === "error") {
                             throw new Error(event.message);
                         } else if (event.type === "warning") {
-                            // Just log warnings, don't crash
+                            // Detect backend Auto-Recovery
+                            if (event.message && event.message.includes("Created NEW Sheet ->")) {
+                                const newUrl = event.message.split("->")[1].trim();
+                                if (newUrl && newUrl.startsWith("http")) {
+                                    console.log("Auto-Recovery Detected: Updating Sheet URL to", newUrl);
+                                    setSheetUrl(newUrl);
+                                    // PERSIST IMMEDIATELY
+                                    saveConfig(undefined, newUrl);
+                                }
+                            }
                             console.warn("Workflow Warning:", event.message);
                             setProgressMessage(`Warning: ${event.message}`);
                         }
