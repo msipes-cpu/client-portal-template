@@ -12,14 +12,12 @@ WARMUP_RECOVERY_MIN = 85.0 #%
 WARMUP_ACTIVE_MIN = 90.0 #%
 
 # Tags
-# Tags
-TAG_STATUS_ACTIVE = "Active"
+TAG_STATUS_SENDING = "Sending"
 TAG_STATUS_WARMING = "Warming"
 TAG_STATUS_BENCHED = "Benched"
 TAG_STATUS_SICK = "Sick"
-TAG_STATUS_DEAD = "Dead"
 
-STATUS_TAGS = {TAG_STATUS_ACTIVE, TAG_STATUS_WARMING, TAG_STATUS_BENCHED, TAG_STATUS_SICK, TAG_STATUS_DEAD}
+STATUS_TAGS = {TAG_STATUS_SENDING, TAG_STATUS_WARMING, TAG_STATUS_BENCHED, TAG_STATUS_SICK}
 
 class DecisionEngine:
     def __init__(self, api, config=None):
@@ -89,34 +87,23 @@ class DecisionEngine:
              if force_status == TAG_STATUS_BENCHED and status_tag != TAG_STATUS_BENCHED:
                  return self._create_action(email, "Rule 5: Rotation Target (Force Bench)", TAG_STATUS_BENCHED, warmup=True, campaigns="REMOVE")
              
-             if force_status == TAG_STATUS_ACTIVE and status_tag != TAG_STATUS_ACTIVE:
-                 return self._create_action(email, "Rule 6: Rotation Target (Force Active)", TAG_STATUS_ACTIVE, warmup=True, campaigns="ADD")
+             if force_status == TAG_STATUS_SENDING and status_tag != TAG_STATUS_SENDING:
+                 return self._create_action(email, "Rule 6: Rotation Target (Force Sending)", TAG_STATUS_SENDING, warmup=True, campaigns="ADD")
 
         # --- RULE 5: Bench Rotation Check (Default Logic if no force) ---
-        if status_tag == TAG_STATUS_ACTIVE:
-            # How long active? Need history.
-            # Simplified: Random/Time check?
-            # For MVP: If age > 14 days and we don't have granular "days in status", skip for now.
-            # OR logic: if created > 14 days ago and TAG is active... wait, removing active accounts just by age is wrong.
-            # We need "Days in Status". Since we don't track that yet without DB,
-            # We will SKIP Rule 5 in V1.
+        if status_tag == TAG_STATUS_SENDING:
             pass
 
-        # --- RULE 6: Return to Active Check (Default Logic if no force) ---
+        # --- RULE 6: Return to Sending Check (Default Logic if no force) ---
         if status_tag == TAG_STATUS_BENCHED:
             # If healthy, bring back.
             if warmup_score >= 90:
-                 return self._create_action(email, "Rule 6: Rested & Healthy", TAG_STATUS_ACTIVE, warmup=True, campaigns="ADD")
+                 return self._create_action(email, "Rule 6: Rested & Healthy", TAG_STATUS_SENDING, warmup=True, campaigns="ADD")
             return None
 
-        # --- RULE 7: Dead Account Check ---
-        if status_tag == TAG_STATUS_SICK:
-             # Need "Days in Sick". Skip for V1.
-             pass
-        
-        # Default: If no status tag, set to Active if old enough
+        # Default: If no status tag, set to Sending if old enough
         if not status_tag and age_days >= MIN_AGE_DAYS:
-             return self._create_action(email, "Rule 0: Unlabeled -> Active", TAG_STATUS_ACTIVE, warmup=True, campaigns="ADD")
+             return self._create_action(email, "Rule 0: Unlabeled -> Sending", TAG_STATUS_SENDING, warmup=True, campaigns="ADD")
 
         return None
 

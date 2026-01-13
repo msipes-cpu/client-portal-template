@@ -63,7 +63,8 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
     # and map them back.
     logging.info("Hydrating account tags...")
     all_tag_map = api.get_all_tags_map()
-    relevant_status_tags = ["Active", "Sick", "Warming", "Benched", "Dead"]
+    # Include Legacy tags here so we can detect and remove them
+    relevant_status_tags = ["Sending", "Sick", "Warming", "Benched", "Active", "Dead"]
     
     email_to_acc_map = {acc['email']: acc for acc in accounts}
     
@@ -179,7 +180,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
         for acc in accounts:
             tags = acc.get("tags_resolved", [])
             # Only consider healthy-ish accounts for rotation logic
-            if "Active" in tags:
+            if "Sending" in tags:
                 active_candidates.append(acc)
             elif "Benched" in tags:
                 benched_candidates.append(acc)
@@ -204,12 +205,15 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
                 release = current_bench_count - target_bench_count
                 benched_candidates.sort(key=lambda x: int(x.get('stat_warmup_score', 0) or 0), reverse=True)
                 to_activate = benched_candidates[:release]
-                for a in to_activate: force_map[a['email']] = "Active"
-                logging.info(f"Rotation: Forcing ACTIVE for {len(to_activate)} accounts.")
+                for a in to_activate: force_map[a['email']] = "Sending"
+                logging.info(f"Rotation: Forcing SENDING for {len(to_activate)} accounts.")
 
     count = 0
     total_accounts = len(accounts)
     
+    # Conflict List (Tags to remove if they exist and aren't the new tag)
+    CONFLICT_TAGS = {"Active", "Dead", "Sending", "Sick", "Warming", "Benched"}
+
     for acc in accounts:
         count += 1
         # Deep fetch (Analytics) - Placeholder for now
@@ -235,13 +239,26 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
             
             # Execute Action (Update Instantly)
             # 1. Update Tag
-            tag_id = api.get_tag_id_by_name(new_tag)
-            if tag_id:
-                # Add new tag. (Ideally remove old status tag too, but safe add for now)
-                # Pass UUID or Email as ID (Toggle Resource needs ID or Email?) 
-                # Provider verified ID (UUID) is safer. Fallback to email.
+            tag_id_new = api.get_tag_id_by_name(new_tag)
+            
+            if tag_id_new:
                 acc_uuid = acc.get("id", acc.get("email"))
-                api.add_account_tag(acc_uuid, tag_id, acc.get("tags", [])) 
+                current_tag_ids = acc.get("tags", [])
+                
+                # Cleanup conflicts
+                for c_tag_name in CONFLICT_TAGS:
+                    if c_tag_name != new_tag and c_tag_name in final_tags:
+                         # Remove this conflict
+                         c_id = api.get_tag_id_by_name(c_tag_name)
+                         if c_id:
+                             logging.info(f"Removing conflicting tag '{c_tag_name}' from {email}")
+                             api.remove_account_tag(acc_uuid, c_id)
+                             if c_tag_name in final_tags:
+                                 final_tags.remove(c_tag_name)
+
+                # Add new tag (if not already present? add just in case)
+                api.add_account_tag(acc_uuid, tag_id_new, current_tag_ids) 
+                
                 # Update our local record for the report
                 if new_tag not in final_tags:
                     final_tags.append(new_tag)
@@ -265,7 +282,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
             # Determine Change Display for Tab
             # Try to find previous status tag
             prev_tag = "-"
-            valid_status_tags = {"Active", "Warming", "Benched", "Sick", "Dead"}
+            valid_status_tags = {"Sending", "Warming", "Benched", "Sick"}
             for t in acc.get("tags_resolved", []):
                 # Check for either "status-" legacy or new Title Case
                 if (t.startswith("status-") or t in valid_status_tags) and t != new_tag:
@@ -310,7 +327,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
     # 4. Generate Transition Summary (for Sheet & Email)
     transition_counts = {} # Only counts changes
     global_counts = {
-        "Active": 0, "Sick": 0, "Warming": 0, "Benched": 0, "Dead": 0
+        "Sending": 0, "Sick": 0, "Warming": 0, "Benched": 0
     }
 
     # Calculate Global Counts (Current State of All Accounts)
@@ -319,11 +336,10 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
         tags_list = acc.get("tags", "").split(", ")
         primary = "Unknown"
         # Priority Order
-        if "Dead" in tags_list: primary = "Dead"
-        elif "Sick" in tags_list: primary = "Sick"
+        if "Sick" in tags_list: primary = "Sick"
         elif "Warming" in tags_list: primary = "Warming"
         elif "Benched" in tags_list: primary = "Benched"
-        elif "Active" in tags_list: primary = "Active"
+        elif "Sending" in tags_list: primary = "Sending"
         
         if primary in global_counts:
             global_counts[primary] += 1

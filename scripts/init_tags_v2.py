@@ -22,11 +22,10 @@ def init_tags_v2():
     
     # 2. Define New "Simple" Tags
     new_tags = [
-        {"label": "Active", "color": "#10B981"},    # Emerald Green
+        {"label": "Sending", "color": "#10B981"},    # Emerald Green (Replaces Active)
         {"label": "Warming", "color": "#3B82F6"},   # Blue
         {"label": "Sick", "color": "#EF4444"},      # Red
-        {"label": "Benched", "color": "#6B7280"},   # Gray
-        {"label": "Dead", "color": "#111827"}       # Black
+        {"label": "Benched", "color": "#6B7280"}    # Gray
     ]
     
     # 3. Create New Tags
@@ -43,11 +42,18 @@ def init_tags_v2():
             print(f"✓ '{label}' already exists.")
 
     # 4. Delete Old "status-" Tags (Validation)
-    legacy_prefixes = ["status-"]
+    legacy_keys = ["status-", "Active", "Dead"] # Clean up Active and Dead too
     
     print("\n--- Cleanup Legacy Tags ---")
     for label, tid in existing_map.items():
-        if any(label.startswith(p) for p in legacy_prefixes):
+        # Check if label matches exact cleanup target OR starts with prefix
+        should_delete = False
+        if label in ["Active", "Dead"]:
+             should_delete = True
+        elif any(label.startswith(p) for p in legacy_keys if p == "status-"):
+             should_delete = True
+
+        if should_delete:
             print(f"Deleting legacy tag: {label} ({tid})...")
             try:
                 if api.delete_custom_tag(tid):
