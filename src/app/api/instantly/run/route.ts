@@ -4,7 +4,7 @@ import path from 'path';
 
 export async function POST(req: Request) {
     try {
-        const { token, sheetUrl, reportEmail, warmupThreshold } = await req.json();
+        const { token, sheetUrl, reportEmail, warmupThreshold, benchPercent } = await req.json();
 
         if (!token) {
             return NextResponse.json({ success: false, error: "Token is required" }, { status: 400 });
@@ -29,6 +29,9 @@ export async function POST(req: Request) {
         }
         if (warmupThreshold) {
             args.push("--warmup_threshold", String(warmupThreshold));
+        }
+        if (typeof benchPercent !== 'undefined') {
+            args.push("--bench_percent", String(benchPercent));
         }
 
         const encoder = new TextEncoder();

@@ -76,6 +76,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
     };
 
     const [warmupThreshold, setWarmupThreshold] = useState(70);
+    const [benchPercent, setBenchPercent] = useState(0);
     const [progress, setProgress] = useState(0);
     const [progressMessage, setProgressMessage] = useState("");
 
@@ -137,7 +138,8 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                     token: apiToken,
                     sheetUrl: activeSheetUrl,
                     reportEmail: reportEmail || shareEmail,
-                    warmupThreshold: parseInt(String(warmupThreshold)) || 70
+                    warmupThreshold: parseInt(String(warmupThreshold)) || 70,
+                    benchPercent: parseInt(String(benchPercent)) || 0
                 })
             });
 
@@ -359,6 +361,16 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                                                 min="1" max="100"
                                                 value={warmupThreshold}
                                                 onChange={(e) => setWarmupThreshold(Number(e.target.value))}
+                                                className="bg-background/20 border-zinc-700 h-8 text-xs"
+                                            />
+                                        </div>
+                                        <div className="flex-1 space-y-1">
+                                            <Label className="text-zinc-400 text-xs">Target Bench (%)</Label>
+                                            <Input
+                                                type="number"
+                                                min="0" max="100"
+                                                value={benchPercent}
+                                                onChange={(e) => setBenchPercent(Number(e.target.value))}
                                                 className="bg-background/20 border-zinc-700 h-8 text-xs"
                                             />
                                         </div>

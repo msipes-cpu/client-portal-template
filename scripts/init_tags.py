@@ -1,52 +1,53 @@
-import sys
 import os
-import requests
-# Add project root to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import sys
+import logging
+
+# Add project root to sys.path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from inboxbench.lib.instantly_api import InstantlyAPI
 
-REQUIRED_TAGS = [
-    "status-active",
-    "status-warming",
-    "status-benched",
-    "status-sick",
-    "status-dead"
-]
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
-def init_tags(api_key):
+def init_tags():
+    # Load API Key (Try locally hardcoded for this session, or from env)
+    # Using the one from debug script for reliability in this manual run
+    api_key = "YTA5NTM0NzgtZTgzNC00OGFmLWJlZmMtNzdiMzkxZDg1ZGE2OkRFaWx2aG1hU3d5aQ=="
+    
     api = InstantlyAPI(api_key)
+    print("--- Initializing Instantly Tags ---\n")
     
-    print("--- Checking Existing Tags ---")
+    # 1. Fetch Existing
     existing_tags = api.list_custom_tags()
-    existing_labels = []
-    if isinstance(existing_tags, dict):
-        items = existing_tags.get("items", [])
-        existing_labels = [t.get('label') for t in items]
-    elif isinstance(existing_tags, list):
-        existing_labels = [t.get('label') for t in existing_tags]
+    items = existing_tags.get("items", []) if isinstance(existing_tags, dict) else existing_tags
+    if not items: items = []
     
-    print(f"Found: {existing_labels}")
+    existing_labels = [t.get("label") for t in items]
+    print(f"Found {len(items)} existing tags: {existing_labels}")
     
-    for tag in REQUIRED_TAGS:
-        if tag in existing_labels:
-            print(f"✅ {tag} exists.")
-        else:
-            print(f"Creating {tag}...")
-            # Endpoint for creating tag: POST /custom-tags
-            # Payload: {"label": "status-active", "color": "#HEX"}
+    # 2. Define Required Tags
+    required_tags = [
+        {"label": "status-active", "color": "#10B981"}, # Emerald Green
+        {"label": "status-warming", "color": "#3B82F6"}, # Blue
+        {"label": "status-sick", "color": "#EF4444"},    # Red
+        {"label": "status-benched", "color": "#6B7280"}  # Gray
+    ]
+    
+    # 3. Create Missing
+    for tag in required_tags:
+        label = tag["label"]
+        if label not in existing_labels:
+            print(f"Creating '{label}'...")
             try:
-                # Basic implementation since lib might not have create_tag
-                url = f"{api.base_url}/custom-tags"
-                resp = requests.post(url, headers=api.headers, json={"label": tag})
-                if resp.status_code in [200, 201]:
-                    print(f"✅ Created {tag}")
-                else:
-                    print(f"❌ Failed to create {tag}: {resp.text}")
+                resp = api.create_custom_tag(label, tag["color"])
+                print(f"✅ Created: {resp}")
             except Exception as e:
-                print(f"❌ Error creating {tag}: {e}")
+                print(f"❌ Failed to create {label}: {e}")
+        else:
+            print(f"✓ '{label}' already exists.")
+
+    print("\n--- Tag Initialization Complete ---")
 
 if __name__ == "__main__":
-    # Hardcoded key from debug previous step since env not reliable
-    key = "YTA5NTM0NzgtZTgzNC00OGFmLWJlZmMtNzdiMzkxZDg1ZGE2OkRFaWx2aG1hU3d5aQ=="
-    init_tags(key)
+    init_tags()

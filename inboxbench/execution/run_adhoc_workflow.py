@@ -4,6 +4,7 @@ import logging
 import sys
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -25,7 +26,7 @@ def emit_status(step, message, percent):
     }
     print(json.dumps(data), flush=True)
 
-def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70):
+def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70, bench_percent=0):
     """
     Runs a report for ALL accounts in the workspace.
     Streams progress updates to stdout.
@@ -56,6 +57,32 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
 
     # 3. Analyze Data
     emit_status("analyzing", f"Analyzing {len(campaigns)} campaigns...", 30)
+    
+    # --- HYDRATE TAGS ---
+    # Since list_accounts doesn't return tags, we must fetch accounts for each relevant tag
+    # and map them back.
+    logging.info("Hydrating account tags...")
+    all_tag_map = api.get_all_tags_map()
+    relevant_status_tags = ["Active", "Sick", "Warming", "Benched", "Dead"]
+    
+    email_to_acc_map = {acc['email']: acc for acc in accounts}
+    
+    for t_name in relevant_status_tags:
+        t_id = api.get_tag_id_by_name(t_name)
+        if t_id:
+            # unique list of accounts with this tag
+            tagged_accs_data = api.list_accounts(tag_ids=[t_id])
+            if isinstance(tagged_accs_data, list): # Check type safety
+                 for t_acc in tagged_accs_data:
+                     email = t_acc.get('email')
+                     if email in email_to_acc_map:
+                         # Ensure 'tags' key exists and is list
+                         if 'tags' not in email_to_acc_map[email]:
+                             email_to_acc_map[email]['tags'] = []
+                         # Avoid dupes
+                         if t_id not in email_to_acc_map[email]['tags']:
+                             email_to_acc_map[email]['tags'].append(t_id)
+
     total_sent = 0
     total_replies = 0
     total_leads = 0
@@ -117,7 +144,10 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
 
     # Initialize Decision Engine
     from execution.decision_engine import DecisionEngine
-    engine_config = {"warmup_threshold": warmup_threshold}
+    engine_config = {
+        "warmup_threshold": warmup_threshold,
+        "bench_percent": bench_percent
+    }
     engine = DecisionEngine(api, config=engine_config)
 
     processed_accounts = []
@@ -138,6 +168,45 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
         0: "Inactive"
     }
 
+    # Pre-calculate Rotation Plan
+    bench_percent = engine_config.get("bench_percent", 0)
+    force_map = {}
+    
+    if bench_percent > 0:
+        active_candidates = []
+        benched_candidates = []
+        
+        for acc in accounts:
+            tags = acc.get("tags_resolved", [])
+            # Only consider healthy-ish accounts for rotation logic
+            if "Active" in tags:
+                active_candidates.append(acc)
+            elif "Benched" in tags:
+                benched_candidates.append(acc)
+                
+        total_pool = len(active_candidates) + len(benched_candidates)
+        if total_pool > 0:
+            target_bench_count = int(total_pool * bench_percent / 100)
+            current_bench_count = len(benched_candidates)
+            
+            logging.info(f"Rotation Logic: Total={total_pool}, Target Bench={target_bench_count}, Current={current_bench_count}")
+            
+            if current_bench_count < target_bench_count:
+                # Deficit: Bench some Actives (Lowest Score first)
+                needed = target_bench_count - current_bench_count
+                active_candidates.sort(key=lambda x: int(x.get('stat_warmup_score', 100) or 0))
+                to_bench = active_candidates[:needed]
+                for a in to_bench: force_map[a['email']] = "Benched"
+                logging.info(f"Rotation: Forcing BENCH for {len(to_bench)} accounts.")
+
+            elif current_bench_count > target_bench_count:
+                # Surplus: Activate some Benched (Healthiest first)
+                release = current_bench_count - target_bench_count
+                benched_candidates.sort(key=lambda x: int(x.get('stat_warmup_score', 0) or 0), reverse=True)
+                to_activate = benched_candidates[:release]
+                for a in to_activate: force_map[a['email']] = "Active"
+                logging.info(f"Rotation: Forcing ACTIVE for {len(to_activate)} accounts.")
+
     count = 0
     total_accounts = len(accounts)
     
@@ -147,7 +216,8 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
         analytics = api.get_account_analytics(acc.get("email"))
         
         # Evaluate Rules
-        action = engine.evaluate_account(acc, analytics)
+        force_status = force_map.get(acc.get("email"))
+        action = engine.evaluate_account(acc, analytics, force_status=force_status)
         
         # Default status/tags from current state
         final_tags = acc.get("tags_resolved", [])
@@ -168,7 +238,10 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
             tag_id = api.get_tag_id_by_name(new_tag)
             if tag_id:
                 # Add new tag. (Ideally remove old status tag too, but safe add for now)
-                api.add_account_tag(email, tag_id, acc.get("tags", [])) 
+                # Pass UUID or Email as ID (Toggle Resource needs ID or Email?) 
+                # Provider verified ID (UUID) is safer. Fallback to email.
+                acc_uuid = acc.get("id", acc.get("email"))
+                api.add_account_tag(acc_uuid, tag_id, acc.get("tags", [])) 
                 # Update our local record for the report
                 if new_tag not in final_tags:
                     final_tags.append(new_tag)
@@ -179,7 +252,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
                 pass
 
             actions_log.append([
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                datetime.now(ZoneInfo("US/Mountain")).strftime('%Y-%m-%d %H:%M:%S'),
                 "Unknown Client", 
                 email,
                 final_status, # "Previous Status" roughly
@@ -192,8 +265,10 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
             # Determine Change Display for Tab
             # Try to find previous status tag
             prev_tag = "-"
+            valid_status_tags = {"Active", "Warming", "Benched", "Sick", "Dead"}
             for t in acc.get("tags_resolved", []):
-                if t.startswith("status-") and t != new_tag:
+                # Check for either "status-" legacy or new Title Case
+                if (t.startswith("status-") or t in valid_status_tags) and t != new_tag:
                     prev_tag = t
                     break
             
@@ -202,7 +277,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
             if prev_tag == "-":
                 change_display = f"-> {new_tag}"
             else:
-                 # Format: status-active -> status-sick => Active -> Sick
+                 # Clean legacy "status-" prefix if present
                 p_clean = prev_tag.replace("status-", "").capitalize()
                 n_clean = new_tag.replace("status-", "").capitalize()
                 change_display = f"{p_clean} -> {n_clean}"
@@ -223,7 +298,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
 
     report_data = {
         "client_name": "Ad-Hoc Run",
-        "formatted_date": datetime.now().strftime('%Y-%m-%d %H:%M'),
+        "formatted_date": datetime.now(ZoneInfo("US/Mountain")).strftime('%Y-%m-%d %H:%M'),
         "total_sent": total_sent,
         "total_leads": total_leads,
         "total_replies": total_replies,
@@ -233,24 +308,42 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70)
     }
     
     # 4. Generate Transition Summary (for Sheet & Email)
-    summary_counts = {
-        "Sick": 0, "Benched": 0, "Active": 0, "Warming": 0
+    transition_counts = {} # Only counts changes
+    global_counts = {
+        "Active": 0, "Sick": 0, "Warming": 0, "Benched": 0, "Dead": 0
     }
+
+    # Calculate Global Counts (Current State of All Accounts)
+    for acc in processed_accounts:
+        # Derived from tags string or logic
+        tags_list = acc.get("tags", "").split(", ")
+        primary = "Unknown"
+        # Priority Order
+        if "Dead" in tags_list: primary = "Dead"
+        elif "Sick" in tags_list: primary = "Sick"
+        elif "Warming" in tags_list: primary = "Warming"
+        elif "Benched" in tags_list: primary = "Benched"
+        elif "Active" in tags_list: primary = "Active"
+        
+        if primary in global_counts:
+            global_counts[primary] += 1
+
     transition_list = []
     
     for log in actions_log:
         # log format: [time, client, email, prev, new, reason, ...]
         new_status = log[4]
-        if new_status.startswith("status-"):
-            key = new_status.replace("status-", "").capitalize()
-            summary_counts[key] = summary_counts.get(key, 0) + 1
+        # Clean key
+        key = new_status.replace("status-", "").capitalize()
+        transition_counts[key] = transition_counts.get(key, 0) + 1
         transition_list.append(f"{log[2]} -> {log[4]} ({log[5]})")
 
     # Add Summary to Report Data
     report_data["run_summary"] = {
         "total_actions": len(actions_log),
         "transitions": transition_list,
-        "counts": summary_counts
+        "counts": global_counts, # Use GLOBAL counts for sheet
+        "transition_counts": transition_counts 
     }
 
     # 5. Update Sheet
@@ -364,10 +457,11 @@ if __name__ == "__main__":
     parser.add_argument("--sheet", required=False)
     parser.add_argument("--report_email", required=False)
     parser.add_argument("--warmup_threshold", type=int, default=70, help="Min Warmup Score (Default 70)")
+    parser.add_argument("--bench_percent", type=int, default=0, help="Target Bench % (Default 0)")
     args = parser.parse_args()
     
     try:
-        result = run_adhoc_report(args.key, args.sheet, args.report_email, args.warmup_threshold)
+        result = run_adhoc_report(args.key, args.sheet, args.report_email, args.warmup_threshold, args.bench_percent)
         # Final output for the API to capture as the "Result"
         print(json.dumps({"type": "result", "data": result}), flush=True)
     except Exception as e:

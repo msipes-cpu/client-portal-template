@@ -96,6 +96,25 @@ class InstantlyAPI:
         """Retrieves all custom tags."""
         return self._get("/custom-tags")
     
+    def create_custom_tag(self, label, color="#374151"):
+        """Creates a new custom tag."""
+        payload = {
+            "label": label,
+            "color": color
+        }
+        return self._post("/custom-tags", payload=payload)
+    
+    def delete_custom_tag(self, tag_id):
+        """Deletes a custom tag."""
+        url = f"{self.base_url}/custom-tags/{tag_id}"
+        try:
+            response = requests.delete(url, headers=self.headers)
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logging.error(f"Error deleting tag {tag_id}: {e}")
+            return False
+
     def get_tag_id_by_name(self, tag_name):
         """Helper to resolve tag name to ID."""
         tags = self.list_custom_tags()
@@ -171,32 +190,41 @@ class InstantlyAPI:
         # Let's try /accounts/update first.
         return self._post("/accounts/update", payload=payload)
 
-    def add_account_tag(self, email, tag_id, current_tags=None):
-        """Adds a single tag to an account, preserving others."""
-        if current_tags is None:
-            # Need to fetch current tags if not provided
-            # This is expensive, better to pass them in.
-            # For now, let's assume calling code passes them or we fetch.
-            # Simplified: Just fetch account info? No, single account fetch?
-            # Let's rely on caller passing current_tags list (IDs)
-            logging.error("add_account_tag requires current_tags list")
-            return False
+    def add_account_tag(self, account_id, tag_id, current_tags=None):
+        """Adds a single tag to an account using toggle-resource."""
+        # Note: current_tags must be a list of TAG IDs or Names? 
+        # Typically we compare IDs.
         
-        if tag_id not in current_tags:
-            new_tags = current_tags + [tag_id]
-            return self.set_account_tags(email, new_tags)
+        should_toggle = False
+        if current_tags is None:
+            # Dangerous to assume. Better to fetch or defaulting to "Do it"
+            # But "doing it" blindly might remove it.
+            # Ideally we fail if unknown.
+            logging.warning("add_account_tag called without current_tags. Assuming add is needed (Risky if toggle).")
+            should_toggle = True
+        elif tag_id not in current_tags:
+            should_toggle = True
+            
+        if should_toggle:
+            payload = {
+                "tag_ids": [tag_id],
+                "resource_ids": [account_id],
+                "resource_type": 1, # 1 = Email Account
+                "assign": True
+            }
+            return self._post("/custom-tags/toggle-resource", payload=payload)
         return True
 
-    def remove_account_tag(self, email, tag_id, current_tags=None):
-        """Removes a single tag."""
-        if current_tags is None:
-            logging.error("remove_account_tag requires current_tags list")
-            return False
-            
-        if tag_id in current_tags:
-            new_tags = [t for t in current_tags if t != tag_id]
-            return self.set_account_tags(email, new_tags)
-        return True
+    def remove_account_tag(self, account_id, tag_id, current_tags=None):
+        """Removes a single tag using toggle-resource."""
+        # Using assign=False ensures removal
+        payload = {
+            "tag_ids": [tag_id],
+            "resource_ids": [account_id],
+            "resource_type": 1,
+            "assign": False
+        }
+        return self._post("/custom-tags/toggle-resource", payload=payload)
 
     def update_account_status(self, email, status_id):
         """Updates the status (1=Active, etc) of an account."""

@@ -12,11 +12,14 @@ WARMUP_RECOVERY_MIN = 85.0 #%
 WARMUP_ACTIVE_MIN = 90.0 #%
 
 # Tags
-TAG_STATUS_ACTIVE = "status-active"
-TAG_STATUS_WARMING = "status-warming"
-TAG_STATUS_BENCHED = "status-benched"
-TAG_STATUS_SICK = "status-sick"
-TAG_STATUS_DEAD = "status-dead"
+# Tags
+TAG_STATUS_ACTIVE = "Active"
+TAG_STATUS_WARMING = "Warming"
+TAG_STATUS_BENCHED = "Benched"
+TAG_STATUS_SICK = "Sick"
+TAG_STATUS_DEAD = "Dead"
+
+STATUS_TAGS = {TAG_STATUS_ACTIVE, TAG_STATUS_WARMING, TAG_STATUS_BENCHED, TAG_STATUS_SICK, TAG_STATUS_DEAD}
 
 class DecisionEngine:
     def __init__(self, api, config=None):
@@ -24,7 +27,7 @@ class DecisionEngine:
         self.config = config or {}
         self.actions_log = []
 
-    def evaluate_account(self, account, analytics=None):
+    def evaluate_account(self, account, analytics=None, force_status=None):
         """
         Runs the 7-Rule Check on a single account.
         Returns a dict of actions to take.
@@ -80,8 +83,16 @@ class DecisionEngine:
             if warmup_score > 95:
                  return self._create_action(email, "Rule 4: Recovered (Score > 95)", TAG_STATUS_BENCHED, warmup=True, campaigns="REMOVE")
             return None
+        
+        # --- FORCED ROTATION (Takes priority over Rule 5/6 if healthy) ---
+        if force_status:
+             if force_status == TAG_STATUS_BENCHED and status_tag != TAG_STATUS_BENCHED:
+                 return self._create_action(email, "Rule 5: Rotation Target (Force Bench)", TAG_STATUS_BENCHED, warmup=True, campaigns="REMOVE")
+             
+             if force_status == TAG_STATUS_ACTIVE and status_tag != TAG_STATUS_ACTIVE:
+                 return self._create_action(email, "Rule 6: Rotation Target (Force Active)", TAG_STATUS_ACTIVE, warmup=True, campaigns="ADD")
 
-        # --- RULE 5: Bench Rotation Check ---
+        # --- RULE 5: Bench Rotation Check (Default Logic if no force) ---
         if status_tag == TAG_STATUS_ACTIVE:
             # How long active? Need history.
             # Simplified: Random/Time check?
@@ -91,7 +102,7 @@ class DecisionEngine:
             # We will SKIP Rule 5 in V1.
             pass
 
-        # --- RULE 6: Return to Active Check ---
+        # --- RULE 6: Return to Active Check (Default Logic if no force) ---
         if status_tag == TAG_STATUS_BENCHED:
             # If healthy, bring back.
             if warmup_score >= 90:
@@ -111,7 +122,7 @@ class DecisionEngine:
 
     def _get_status_tag(self, tags):
         for t in tags:
-            if t.startswith("status-"):
+            if t in STATUS_TAGS:
                 return t
         return None
 

@@ -152,10 +152,26 @@ def update_client_sheet(client_data, spreadsheet_id):
         # For now, let's stick to the existing "Report" format for the main tab, but rename it "Daily Snapshot"
         # and add logic to update other tabs if data is provided.
         
+        # Status Summary Data
+        run_summary = client_data.get('run_summary', {})
+        counts = run_summary.get('counts', {})
+        status_summary_table = [
+             ["STATUS SUMMARY", "Count"],
+             ["Active", counts.get("Active", 0)],
+             ["Warming", counts.get("Warming", 0)],
+             ["Sick", counts.get("Sick", 0)],
+             ["Benched", counts.get("Benched", 0)],
+             ["Dead", counts.get("Dead", 0)]
+        ]
+
         # Snapshot Data Construction
         snapshot_values = []
         snapshot_values.extend(overview_data)
         snapshot_values.append([])
+        # Insert Status Summary
+        snapshot_values.extend(status_summary_table)
+        snapshot_values.append([])
+        
         snapshot_values.append(["CAMPAIGN PERFORMANCE"])
         snapshot_values.extend([campaign_header] + campaign_rows)
         snapshot_values.append([])
