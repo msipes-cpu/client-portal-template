@@ -1,5 +1,7 @@
 import requests
 import logging
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 
 class InstantlyAPI:
     def __init__(self, api_key):
@@ -12,6 +14,21 @@ class InstantlyAPI:
         }
         self.base_url = "https://api.instantly.ai/api/v2"
 
+        # Initialize Session with Retries
+        self.session = requests.Session()
+        self.session.headers.update(self.headers)
+        
+        # Exponential Backoff: 1s, 2s, 4s
+        retry_strategy = Retry(
+            total=3, 
+            backoff_factor=1, 
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "OPTIONS", "POST", "DELETE", "PUT"]
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
+
     def _get(self, endpoint, params=None):
         """Internal method to handle GET requests."""
         url = f"{self.base_url}{endpoint}"
@@ -19,7 +36,8 @@ class InstantlyAPI:
             params = {}
         
         try:
-            response = requests.get(url, headers=self.headers, params=params)
+            # Use session for retries
+            response = self.session.get(url, params=params)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -37,7 +55,8 @@ class InstantlyAPI:
             payload = {}
         
         try:
-            response = requests.post(url, headers=self.headers, json=payload)
+            # Use session for retries
+            response = self.session.post(url, json=payload)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -108,7 +127,7 @@ class InstantlyAPI:
         """Deletes a custom tag."""
         url = f"{self.base_url}/custom-tags/{tag_id}"
         try:
-            response = requests.delete(url, headers=self.headers)
+            response = self.session.delete(url)
             response.raise_for_status()
             return True
         except Exception as e:
