@@ -4,7 +4,7 @@ import path from 'path';
 
 export async function POST(req: Request) {
     try {
-        const { token, sheetUrl, reportEmail, warmupThreshold, benchPercent } = await req.json();
+        const { token, sheetUrl, reportEmail, warmupThreshold, benchPercent, ignoreCustomerTags } = await req.json();
 
         if (!token) {
             return NextResponse.json({ success: false, error: "Token is required" }, { status: 400 });
@@ -32,6 +32,9 @@ export async function POST(req: Request) {
         }
         if (typeof benchPercent !== 'undefined') {
             args.push("--bench_percent", String(benchPercent));
+        }
+        if (ignoreCustomerTags === true || ignoreCustomerTags === 'true') {
+            args.push("--ignore_customer_tags");
         }
 
         const encoder = new TextEncoder();

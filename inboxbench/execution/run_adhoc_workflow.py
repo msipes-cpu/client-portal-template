@@ -26,7 +26,7 @@ def emit_status(step, message, percent):
     }
     print(json.dumps(data), flush=True)
 
-def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70, bench_percent=0):
+def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70, bench_percent=0, ignore_customer_tags=True):
     """
     Runs a report for ALL accounts in the workspace.
     Streams progress updates to stdout.
@@ -59,9 +59,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
     emit_status("analyzing", f"Analyzing {len(campaigns)} campaigns...", 30)
     
     # --- HYDRATE TAGS ---
-    # Since list_accounts doesn't return tags, we must fetch accounts for each relevant tag
-    # and map them back.
-    logging.info("Hydrating account tags...")
+    logging.info(f"Hydrating account tags... (Ignore Customer Tags: {ignore_customer_tags})")
     all_tag_map = api.get_all_tags_map()
     # Include Legacy tags here so we can detect and remove them
     relevant_status_tags = ["Sending", "Sick", "Warming", "Benched", "Active", "Dead"]
@@ -474,10 +472,11 @@ if __name__ == "__main__":
     parser.add_argument("--report_email", required=False)
     parser.add_argument("--warmup_threshold", type=int, default=70, help="Min Warmup Score (Default 70)")
     parser.add_argument("--bench_percent", type=int, default=0, help="Target Bench % (Default 0)")
+    parser.add_argument("--ignore_customer_tags", action="store_true", help="Ignore (preserve) non-system tags")
     args = parser.parse_args()
     
     try:
-        result = run_adhoc_report(args.key, args.sheet, args.report_email, args.warmup_threshold, args.bench_percent)
+        result = run_adhoc_report(args.key, args.sheet, args.report_email, args.warmup_threshold, args.bench_percent, args.ignore_customer_tags)
         # Final output for the API to capture as the "Result"
         print(json.dumps({"type": "result", "data": result}), flush=True)
     except Exception as e:

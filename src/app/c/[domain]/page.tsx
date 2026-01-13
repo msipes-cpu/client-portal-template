@@ -77,8 +77,13 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
 
     const [warmupThreshold, setWarmupThreshold] = useState(70);
     const [benchPercent, setBenchPercent] = useState(0);
+    const [benchPercent, setBenchPercent] = useState(0);
+    const [ignoreCustomerTags, setIgnoreCustomerTags] = useState(true);
     const [progress, setProgress] = useState(0);
     const [progressMessage, setProgressMessage] = useState("");
+
+    // Config Save Hijack to persist this too? 
+    // Simplified: Just default to true for now as safety is priority.
 
     const handleTestWorkflow = async () => {
         setIsTesting(true);
@@ -139,7 +144,8 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                     sheetUrl: activeSheetUrl,
                     reportEmail: reportEmail || shareEmail,
                     warmupThreshold: parseInt(String(warmupThreshold)) || 70,
-                    benchPercent: parseInt(String(benchPercent)) || 0
+                    benchPercent: parseInt(String(benchPercent)) || 0,
+                    ignoreCustomerTags: ignoreCustomerTags
                 })
             });
 
@@ -376,6 +382,19 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                                                 className="bg-background/20 border-zinc-700 h-8 text-xs"
                                             />
                                         </div>
+                                    </div>
+
+                                    <div className="flex items-center space-x-2 mt-4">
+                                        <input
+                                            type="checkbox"
+                                            id="ignoreTags"
+                                            checked={ignoreCustomerTags}
+                                            onChange={(e) => setIgnoreCustomerTags(e.target.checked)}
+                                            className="h-4 w-4 rounded border-zinc-700 bg-background/20 text-emerald-500 focus:ring-emerald-500/20"
+                                        />
+                                        <Label htmlFor="ignoreTags" className="text-xs text-muted-foreground cursor-pointer select-none">
+                                            Ignore Customer Tags <span className="opacity-50">(Safety)</span>
+                                        </Label>
                                     </div>
 
                                     <Label className="text-zinc-400 mt-2">Run Automation</Label>
