@@ -160,8 +160,7 @@ def update_client_sheet(client_data, spreadsheet_id):
              ["Active", counts.get("Active", 0)],
              ["Warming", counts.get("Warming", 0)],
              ["Sick", counts.get("Sick", 0)],
-             ["Benched", counts.get("Benched", 0)],
-             ["Dead", counts.get("Dead", 0)]
+             ["Benched", counts.get("Benched", 0)]
         ]
 
         # Snapshot Data Construction
