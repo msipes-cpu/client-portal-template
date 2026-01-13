@@ -213,6 +213,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
         read?: boolean;
         write?: boolean;
         error?: string;
+        all_tags?: string[];
     } | null>(null);
     const [isVerifying, setIsVerifying] = useState(false);
 
@@ -240,7 +241,8 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                     count: data.account_count,
                     tags: data.tags,
                     read: data.read_access,
-                    write: data.write_access
+                    write: data.write_access,
+                    all_tags: data.all_tags
                 });
                 // Auto-save API Key on success
                 saveConfig(apiToken, undefined);
@@ -549,127 +551,142 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                                                             </div>
                                                         </div>
                                                     </div>
+                                                    </div>
                                                 )}
 
-                                                <div className="flex gap-2 mt-2 pt-2 border-t border-primary/20">
-                                                    <span className={connectionResult.read ? "text-green-400" : "text-red-400"}>R: {connectionResult.read ? "OK" : "FAIL"}</span>
-                                                    <span className={connectionResult.write ? "text-green-400" : "text-red-400"}>W: {connectionResult.write ? "OK" : "FAIL"}</span>
+                                            {/* All Tags List */}
+                                            {connectionResult.all_tags && connectionResult.all_tags.length > 0 && (
+                                                <div className="mt-2 pt-2 border-t border-primary/20">
+                                                    <p className="font-semibold mb-1 opacity-70">Workspace Tags ({connectionResult.all_tags.length})</p>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {connectionResult.all_tags.map((tag, i) => (
+                                                            <span key={i} className="px-1.5 py-0.5 bg-background/40 rounded text-[9px] border border-white/10">
+                                                                {tag}
+                                                            </span>
+                                                        ))}
+                                                    </div>
                                                 </div>
+                                            )}
+
+                                            <div className="flex gap-2 mt-2 pt-2 border-t border-primary/20">
+                                                <span className={connectionResult.read ? "text-green-400" : "text-red-400"}>R: {connectionResult.read ? "OK" : "FAIL"}</span>
+                                                <span className={connectionResult.write ? "text-green-400" : "text-red-400"}>W: {connectionResult.write ? "OK" : "FAIL"}</span>
                                             </div>
-                                        </>
-                                    )}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    {/* Results Config */}
-                    <Card className="glass-panel border-border/60">
-                        <CardHeader>
-                            <CardTitle className="text-lg flex items-center">
-                                <LinkIcon className="w-4 h-4 mr-2 text-primary" />
-                                Output Configuration
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-
-                            {/* Google Sheet Config */}
-                            <div className="space-y-2 p-3 bg-secondary/20 rounded-lg border border-border/50">
-                                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Google Sheet</label>
-                                <div className="space-y-2">
-                                    <Input
-                                        type="url"
-                                        placeholder="https://docs.google.com/..."
-                                        value={sheetUrl}
-                                        onChange={(e) => setSheetUrl(e.target.value)}
-                                        className="text-xs truncate text-muted-foreground bg-background/50"
-                                    />
-                                    <div className="flex gap-2">
-                                        <div className="flex-1">
-                                            <Input
-                                                type="email"
-                                                placeholder="Share with email..."
-                                                value={shareEmail}
-                                                onChange={(e) => setShareEmail(e.target.value)}
-                                                className="text-xs bg-background/50"
-                                            />
                                         </div>
-                                        <Button
-                                            variant="outline"
-                                            className="px-3"
-                                            title="Create & Share New Sheet"
-                                            onClick={async () => {
-                                                let msg = "Create a new Google Sheet?";
-                                                if (shareEmail) msg += `\nAnd share with ${shareEmail}?`;
+                                </>
+                            )}
+                        </div>
+                            )}
+                    </CardContent>
+                </Card>
 
-                                                const confirmCreate = confirm(msg);
-                                                if (!confirmCreate) return;
+                {/* Results Config */}
+                <Card className="glass-panel border-border/60">
+                    <CardHeader>
+                        <CardTitle className="text-lg flex items-center">
+                            <LinkIcon className="w-4 h-4 mr-2 text-primary" />
+                            Output Configuration
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
 
-                                                const btn = document.getElementById('create-sheet-btn');
-                                                if (btn) btn.innerText = "...";
-
-                                                try {
-                                                    const res = await fetch("/api/sheets/create", {
-                                                        method: "POST",
-                                                        body: JSON.stringify({
-                                                            title: `InboxBench - ${domain}`,
-                                                            shareEmail: shareEmail
-                                                        })
-                                                    });
-                                                    const data = await res.json();
-                                                    if (data.success && data.sheet_url) {
-                                                        setSheetUrl(data.sheet_url);
-                                                        // Save the new sheet URL
-                                                        saveConfig(undefined, data.sheet_url);
-                                                        window.open(data.sheet_url, '_blank');
-                                                        if (data.shared_with) alert(`Sheet created and shared with ${data.shared_with}`);
-                                                    } else {
-                                                        alert("Failed to create sheet: " + (data.error || "Unknown error"));
-                                                    }
-                                                } catch (e) {
-                                                    alert("Error creating sheet");
-                                                } finally {
-                                                    if (btn) btn.innerText = "+";
-                                                }
-                                            }}
-                                        >
-                                            <span id="create-sheet-btn" className="text-lg">+</span>
-                                        </Button>
+                        {/* Google Sheet Config */}
+                        <div className="space-y-2 p-3 bg-secondary/20 rounded-lg border border-border/50">
+                            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Google Sheet</label>
+                            <div className="space-y-2">
+                                <Input
+                                    type="url"
+                                    placeholder="https://docs.google.com/..."
+                                    value={sheetUrl}
+                                    onChange={(e) => setSheetUrl(e.target.value)}
+                                    className="text-xs truncate text-muted-foreground bg-background/50"
+                                />
+                                <div className="flex gap-2">
+                                    <div className="flex-1">
+                                        <Input
+                                            type="email"
+                                            placeholder="Share with email..."
+                                            value={shareEmail}
+                                            onChange={(e) => setShareEmail(e.target.value)}
+                                            className="text-xs bg-background/50"
+                                        />
                                     </div>
                                     <Button
-                                        className="w-full text-xs h-8"
-                                        variant="secondary"
-                                        onClick={() => {
-                                            if (sheetUrl) window.open(sheetUrl, '_blank');
-                                            else alert("Please enter a valid URL first.");
+                                        variant="outline"
+                                        className="px-3"
+                                        title="Create & Share New Sheet"
+                                        onClick={async () => {
+                                            let msg = "Create a new Google Sheet?";
+                                            if (shareEmail) msg += `\nAnd share with ${shareEmail}?`;
+
+                                            const confirmCreate = confirm(msg);
+                                            if (!confirmCreate) return;
+
+                                            const btn = document.getElementById('create-sheet-btn');
+                                            if (btn) btn.innerText = "...";
+
+                                            try {
+                                                const res = await fetch("/api/sheets/create", {
+                                                    method: "POST",
+                                                    body: JSON.stringify({
+                                                        title: `InboxBench - ${domain}`,
+                                                        shareEmail: shareEmail
+                                                    })
+                                                });
+                                                const data = await res.json();
+                                                if (data.success && data.sheet_url) {
+                                                    setSheetUrl(data.sheet_url);
+                                                    // Save the new sheet URL
+                                                    saveConfig(undefined, data.sheet_url);
+                                                    window.open(data.sheet_url, '_blank');
+                                                    if (data.shared_with) alert(`Sheet created and shared with ${data.shared_with}`);
+                                                } else {
+                                                    alert("Failed to create sheet: " + (data.error || "Unknown error"));
+                                                }
+                                            } catch (e) {
+                                                alert("Error creating sheet");
+                                            } finally {
+                                                if (btn) btn.innerText = "+";
+                                            }
                                         }}
                                     >
-                                        Open Sheet ↗
+                                        <span id="create-sheet-btn" className="text-lg">+</span>
                                     </Button>
                                 </div>
+                                <Button
+                                    className="w-full text-xs h-8"
+                                    variant="secondary"
+                                    onClick={() => {
+                                        if (sheetUrl) window.open(sheetUrl, '_blank');
+                                        else alert("Please enter a valid URL first.");
+                                    }}
+                                >
+                                    Open Sheet ↗
+                                </Button>
                             </div>
+                        </div>
 
-                            {/* Email Reporting Config */}
-                            <div className="space-y-2 p-3 bg-secondary/20 rounded-lg border border-border/50">
-                                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Reporting</label>
-                                <div className="space-y-2">
-                                    <Input
-                                        type="email"
-                                        placeholder="Send report to..."
-                                        value={reportEmail}
-                                        onChange={(e) => setReportEmail(e.target.value)}
-                                        className="text-xs bg-background/50"
-                                    />
-                                    <p className="text-[10px] text-muted-foreground opacity-70">
-                                        * Recipient will get a summary email when workflow runs.
-                                    </p>
-                                </div>
+                        {/* Email Reporting Config */}
+                        <div className="space-y-2 p-3 bg-secondary/20 rounded-lg border border-border/50">
+                            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Reporting</label>
+                            <div className="space-y-2">
+                                <Input
+                                    type="email"
+                                    placeholder="Send report to..."
+                                    value={reportEmail}
+                                    onChange={(e) => setReportEmail(e.target.value)}
+                                    className="text-xs bg-background/50"
+                                />
+                                <p className="text-[10px] text-muted-foreground opacity-70">
+                                    * Recipient will get a summary email when workflow runs.
+                                </p>
                             </div>
+                        </div>
 
-                        </CardContent>
-                    </Card>
-                </div>
+                    </CardContent>
+                </Card>
             </div>
         </div>
+        </div >
     );
 }

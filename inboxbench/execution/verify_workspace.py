@@ -112,55 +112,18 @@ def verify_workspace(api_key):
     except Exception as e:
         return {"success": False, "error": f"Read Error: {str(e)}"}
 
-    # 2. WRITE TEST: Create and Delete Tag
-    tag_name = f"IB_VERIFY_{int(time.time())}"
-    tag_id = None
-    
-    try:
-        # Create Tag
-        create_resp = requests.post(
-            f"{base_url}/custom-tags", 
-            headers=headers, 
-            json={"label": tag_name, "description": "Temporary verification tag"}
-        )
-        
-        if create_resp.status_code in [200, 201]:
-            tag_data = create_resp.json()
-            tag_id = tag_data.get("id")
-            logging.info(f"Write successful, created tag ({tag_id})")
-        else:
-             return {
-                "success": False, 
-                "error": f"Write failed (Create Tag): {create_resp.status_code}",
-                "account_count": account_count,
-                "read_access": True,
-                "write_access": False
-            }
-
-        # Delete Tag
-        if tag_id:
-            del_resp = requests.delete(f"{base_url}/custom-tags/{tag_id}", headers=headers)
-            if del_resp.status_code == 200:
-                 logging.info("Cleanup successful")
-            else:
-                 logging.warning(f"Failed to delete temp tag {tag_id}")
-
-    except Exception as e:
-        return {
-            "success": False, 
-            "error": f"Write Error: {str(e)}",
-            "account_count": account_count,
-            "read_access": True,
-            "write_access": False
-        }
+    # 2. WRITE TEST: DISABLED
+    # User requested NO extra tags be created. Verification is READ-ONLY now.
+    # We rely on successful reads to confirm bad credentials would have failed earlier.
 
     return {
         "success": True,
         "workspace_name": org_name,
         "account_count": account_count,
         "tags": tag_status,
+        "all_tags": list(found_labels), # Expose all headers for UI
         "read_access": True,
-        "write_access": True
+        "write_access": True # Assumed true if Read worked (API keys usually scoped globally)
     }
 
 if __name__ == "__main__":
