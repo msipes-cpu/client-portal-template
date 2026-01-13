@@ -11,7 +11,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
     const { domain } = use(params);
     const [executions, setExecutions] = useState(0);
     const [status, setStatus] = useState<"working" | "error">("working");
-    const [nextRun, setNextRun] = useState<string>(new Date().toISOString().split('T')[0] + "T09:00");
+    const [runTime, setRunTime] = useState<string>("09:00");
     const [apiToken, setApiToken] = useState("");
     const [sheetUrl, setSheetUrl] = useState("");
     const [shareEmail, setShareEmail] = useState("");
@@ -41,6 +41,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                     if (data.googleSheetUrl) setSheetUrl(data.googleSheetUrl);
                     if (data.shareEmail) setShareEmail(data.shareEmail);
                     if (data.reportEmail) setReportEmail(data.reportEmail);
+                    if (data.runTime) setRunTime(data.runTime);
                 } else {
                     console.error("Fetch failed:", await res.text());
                 }
@@ -56,7 +57,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
     }, [domain]);
 
     // Save config helper
-    const saveConfig = async (key?: string, sheet?: string, share?: string, report?: string) => {
+    const saveConfig = async (key?: string, sheet?: string, share?: string, report?: string, time?: string) => {
         try {
             // Use hijacked verify endpoint (PUT)
             await fetch('/api/instantly/verify', {
@@ -67,7 +68,8 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                     instantlyApiKey: key,
                     googleSheetUrl: sheet,
                     shareEmail: share,
-                    reportEmail: report
+                    reportEmail: report,
+                    runTime: time
                 })
             });
         } catch (e) {
@@ -351,12 +353,15 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                                 <div className="space-y-3">
                                     <label className="text-sm font-medium text-muted-foreground flex items-center">
                                         <Calendar className="w-4 h-4 mr-2" />
-                                        Next Scheduled Run
+                                        Daily Run Time (MST)
                                     </label>
                                     <Input
-                                        type="datetime-local"
-                                        value={nextRun}
-                                        onChange={(e) => setNextRun(e.target.value)}
+                                        type="time"
+                                        value={runTime}
+                                        onChange={(e) => {
+                                            setRunTime(e.target.value);
+                                            saveConfig(undefined, undefined, undefined, undefined, e.target.value);
+                                        }}
                                     />
                                 </div>
 

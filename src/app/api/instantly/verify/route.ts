@@ -25,7 +25,8 @@ export async function GET(req: Request) {
             instantlyApiKey: project?.instantly_api_key || '',
             googleSheetUrl: project?.google_sheet_url || '',
             shareEmail: project?.share_email || '',
-            reportEmail: project?.report_email || ''
+            reportEmail: project?.report_email || '',
+            runTime: project?.run_time || ''
         });
     } catch (e) {
         console.error("GET /api/instantly/verify error:", e);
@@ -37,7 +38,7 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
     try {
         const body = await req.json();
-        const { domain, instantlyApiKey, googleSheetUrl, shareEmail, reportEmail } = body;
+        const { domain, instantlyApiKey, googleSheetUrl, shareEmail, reportEmail, runTime } = body;
         if (!domain) return NextResponse.json({ error: 'Domain required' }, { status: 400 });
 
         const updateData: any = {};
@@ -45,6 +46,7 @@ export async function PUT(req: Request) {
         if (googleSheetUrl !== undefined) updateData.google_sheet_url = googleSheetUrl;
         if (shareEmail !== undefined) updateData.share_email = shareEmail;
         if (reportEmail !== undefined) updateData.report_email = reportEmail;
+        if (runTime !== undefined) updateData.run_time = runTime;
 
         // Upsert ensures the project exists even if not seeded
         await prisma.project.upsert({
@@ -63,6 +65,7 @@ export async function PUT(req: Request) {
                 google_sheet_url: googleSheetUrl || '',
                 share_email: shareEmail || '',
                 report_email: reportEmail || '',
+                run_time: runTime || '',
                 ...updateData
             }
         });

@@ -74,4 +74,4 @@ ENV PORT=3000
 # https://nextjs.org/docs/pages/api-reference/next-config-js/output
 ENV HOSTNAME="0.0.0.0"
 # Run migrations before starting the server
-CMD ["node", "server.js"]
+CMD npx prisma migrate deploy && node server.js

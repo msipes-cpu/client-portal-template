@@ -23,6 +23,7 @@ model Project {
   google_sheet_url String?
   share_email      String?
   report_email     String?
+  run_time         String?
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 }
