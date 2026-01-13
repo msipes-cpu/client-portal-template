@@ -77,7 +77,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
 
     const [warmupThreshold, setWarmupThreshold] = useState(70);
     const [benchPercent, setBenchPercent] = useState(0);
-    const [benchPercent, setBenchPercent] = useState(0);
+
     const [ignoreCustomerTags, setIgnoreCustomerTags] = useState(true);
     const [progress, setProgress] = useState(0);
     const [progressMessage, setProgressMessage] = useState("");

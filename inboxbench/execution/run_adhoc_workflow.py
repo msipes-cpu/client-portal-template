@@ -171,40 +171,95 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
     bench_percent = engine_config.get("bench_percent", 0)
     force_map = {}
     
-    if bench_percent > 0:
-        active_candidates = []
-        benched_candidates = []
-        
-        for acc in accounts:
-            tags = acc.get("tags_resolved", [])
-            # Only consider healthy-ish accounts for rotation logic
-            if "Sending" in tags:
-                active_candidates.append(acc)
-            elif "Benched" in tags:
-                benched_candidates.append(acc)
-                
-        total_pool = len(active_candidates) + len(benched_candidates)
-        if total_pool > 0:
-            target_bench_count = int(total_pool * bench_percent / 100)
-            current_bench_count = len(benched_candidates)
-            
-            logging.info(f"Rotation Logic: Total={total_pool}, Target Bench={target_bench_count}, Current={current_bench_count}")
-            
-            if current_bench_count < target_bench_count:
-                # Deficit: Bench some Actives (Lowest Score first)
-                needed = target_bench_count - current_bench_count
-                active_candidates.sort(key=lambda x: int(x.get('stat_warmup_score', 100) or 0))
-                to_bench = active_candidates[:needed]
-                for a in to_bench: force_map[a['email']] = "Benched"
-                logging.info(f"Rotation: Forcing BENCH for {len(to_bench)} accounts.")
+    # Validation Helper
+    def get_client_bucket(tags):
+        valid_status = {"Sending", "Sick", "Warming", "Benched", "Active", "Dead"}
+        # Find first tag that is NOT a status tag and NOT legacy status-
+        for t in tags:
+            if t not in valid_status and not t.startswith("status-"):
+                return t
+        return "General"
 
-            elif current_bench_count > target_bench_count:
-                # Surplus: Activate some Benched (Healthiest first)
-                release = current_bench_count - target_bench_count
-                benched_candidates.sort(key=lambda x: int(x.get('stat_warmup_score', 0) or 0), reverse=True)
-                to_activate = benched_candidates[:release]
-                for a in to_activate: force_map[a['email']] = "Sending"
-                logging.info(f"Rotation: Forcing SENDING for {len(to_activate)} accounts.")
+    if bench_percent > 0:
+        # Determine Buckets
+        if ignore_customer_tags:
+            # Single Bucket: "Global"
+            buckets = {"Global": {"accounts": accounts, "campaigns": campaigns}}
+        else:
+            # Hydrate Campaign Tags for Bucket Matching
+            for camp in campaigns:
+                # Campaigns might return tag IDs, need resolution? 
+                # Assuming campaigns have 'tags' list of IDs.
+                c_t_ids = camp.get("tags", [])
+                camp["tags_resolved"] = [tag_map.get(tid, str(tid)) for tid in c_t_ids]
+
+            # Group Accounts
+            buckets = {}
+            for acc in accounts:
+                b_key = get_client_bucket(acc.get("tags_resolved", []))
+                if b_key not in buckets: buckets[b_key] = {"accounts": [], "campaigns": []}
+                buckets[b_key]["accounts"].append(acc)
+            
+            # Map Campaigns to Buckets (for "Can't Swap" rule)
+            for camp in campaigns:
+                b_key = get_client_bucket(camp.get("tags_resolved", []))
+                # Add to bucket if exists (account bucket), or create new? 
+                # If we have a campaign for "Sipes" but no accounts, it's irrelevant for account rotation.
+                # If we have accounts for "Sipes" but no campaigns, we need to know.
+                if b_key not in buckets: buckets[b_key] = {"accounts": [], "campaigns": []}
+                buckets[b_key]["campaigns"].append(camp)
+
+        logging.info(f"Running Rotation Logic on {len(buckets)} buckets (Ignore Tags: {ignore_customer_tags})")
+
+        for b_name, b_data in buckets.items():
+            b_accs = b_data["accounts"]
+            b_camps = b_data["campaigns"]
+            
+            active_candidates = []
+            benched_candidates = []
+            
+            for acc in b_accs:
+                tags = acc.get("tags_resolved", [])
+                if "Sending" in tags:
+                    active_candidates.append(acc)
+                elif "Benched" in tags:
+                    benched_candidates.append(acc)
+            
+            total_pool = len(active_candidates) + len(benched_candidates)
+            if total_pool > 0:
+                # Rule: "if an inbox has a tag... and you don't have any campaigns... you can't swap"
+                # Implementation: If 0 campaigns in this bucket, TARGET BENCH = 100% (Bench All)
+                # Or simply: Target Active = 0.
+                
+                has_campaigns = len(b_camps) > 0
+                if ignore_customer_tags: has_campaigns = True # Global pool assumes campaigns exist or doesn't care
+                
+                if not has_campaigns and b_name != "General":
+                    # No campaigns for this explicit client tag. Force Bench All.
+                    target_bench_count = total_pool
+                    logging.info(f"Bucket '{b_name}': No campaigns found. Forcing 100% Bench.")
+                else:
+                    target_bench_count = int(total_pool * bench_percent / 100)
+                
+                current_bench_count = len(benched_candidates)
+                
+                logging.info(f"Rotation ({b_name}): Total={total_pool}, Target Bench={target_bench_count}, Current={current_bench_count}")
+                
+                if current_bench_count < target_bench_count:
+                    # Deficit: Bench some Actives
+                    needed = target_bench_count - current_bench_count
+                    active_candidates.sort(key=lambda x: int(x.get('stat_warmup_score', 100) or 0))
+                    to_bench = active_candidates[:needed]
+                    for a in to_bench: force_map[a['email']] = "Benched"
+                    logging.info(f"Rotation ({b_name}): Forcing BENCH for {len(to_bench)} accounts.")
+    
+                elif current_bench_count > target_bench_count:
+                    # Surplus: Activate some Benched
+                    release = current_bench_count - target_bench_count
+                    benched_candidates.sort(key=lambda x: int(x.get('stat_warmup_score', 0) or 0), reverse=True)
+                    to_activate = benched_candidates[:release]
+                    for a in to_activate: force_map[a['email']] = "Sending"
+                    logging.info(f"Rotation ({b_name}): Forcing SENDING for {len(to_activate)} accounts.")
 
     count = 0
     total_accounts = len(accounts)
