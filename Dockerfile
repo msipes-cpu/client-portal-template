@@ -42,7 +42,7 @@ ENV NODE_ENV=production
 # Uncomment the following line in case you want to disable telemetry during runtime.
 # ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN apk add --no-cache openssl python3 py3-pip
+RUN apk add --no-cache openssl python3 py3-pip tzdata
 # Install Python dependencies and additional node modules
 RUN pip3 install requests google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client dnspython resend --break-system-packages
 
