@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 
         const project = await prisma.project.findUnique({
             where: { subdomain: domain },
-            select: { instantly_api_key: true, google_sheet_url: true, share_email: true, report_email: true }
+            select: { instantly_api_key: true, google_sheet_url: true, share_email: true, report_email: true, run_time: true }
         });
 
         // If no project, return empty (standard behavior for this UI)
