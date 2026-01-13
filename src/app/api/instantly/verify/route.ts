@@ -38,8 +38,15 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
     try {
         const body = await req.json();
-        const { domain, instantlyApiKey, googleSheetUrl, shareEmail, reportEmail, runTime } = body;
+        const { domain, instantlyApiKey, googleSheetUrl, shareEmail, reportEmail, runTime, pin } = body;
         if (!domain) return NextResponse.json({ error: 'Domain required' }, { status: 400 });
+
+        // Security Check
+        // Default to "123456" if env var is not set, to ensure basic protection.
+        const serverSecret = process.env.ADMIN_SECRET || "123456";
+        if (pin !== serverSecret) {
+            return NextResponse.json({ error: 'Invalid Admin PIN' }, { status: 401 });
+        }
 
         const updateData: any = {};
         if (instantlyApiKey !== undefined) updateData.instantly_api_key = instantlyApiKey;
