@@ -11,7 +11,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
     const { domain } = use(params);
     const [executions, setExecutions] = useState(0);
     const [status, setStatus] = useState<"working" | "error">("working");
-    const [nextRun, setNextRun] = useState<string>(new Date().toISOString().split('T')[0]);
+    const [nextRun, setNextRun] = useState<string>(new Date().toISOString().split('T')[0] + "T09:00");
     const [apiToken, setApiToken] = useState("");
     const [sheetUrl, setSheetUrl] = useState("");
     const [shareEmail, setShareEmail] = useState("");
@@ -354,7 +354,7 @@ export default function ClientDashboard({ params }: { params: Promise<{ domain: 
                                         Next Scheduled Run
                                     </label>
                                     <Input
-                                        type="date"
+                                        type="datetime-local"
                                         value={nextRun}
                                         onChange={(e) => setNextRun(e.target.value)}
                                     />
