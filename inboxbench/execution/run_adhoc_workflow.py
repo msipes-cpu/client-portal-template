@@ -179,14 +179,20 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
             summary = api.get_campaign_summary(camp_id)
             if summary:
                 # Robust extraction: check keys found in debug (`emails_sent_count`, etc.)
-                success_stats["sent"] = summary.get("emails_sent_count", summary.get("contacts_contacted", 0))
+                # User preference: "Sent" column should show "Sequence Started" (unique leads contacted)
+                success_stats["sent"] = summary.get("new_leads_contacted_count", summary.get("contacted_count", 0))
+                
+                # User preference: "Replies" matching UI (20) which is manual (4) + auto (16)
+                manual_replies = summary.get("reply_count", summary.get("replies", 0))
+                auto_replies = summary.get("reply_count_automatic", 0)
+                success_stats["replies"] = manual_replies + auto_replies
+                
                 success_stats["opens"] = summary.get("open_count", summary.get("opens", 0))
-                success_stats["replies"] = summary.get("reply_count", summary.get("replies", 0))
                 success_stats["leads"] = summary.get("leads_count", summary.get("opportunities", 0))
                 
                 # Check for zero stats warning
                 if success_stats["sent"] == 0:
-                     logging.info(f"Campaign {camp_name} returned 0 sent. Keys: {list(summary.keys())}")
+                     logging.info(f"Campaign {camp_name} returned 0 contacted. Keys: {list(summary.keys())}")
 
         except Exception as e:
             logging.warning(f"Failed to fetch stats for {camp_name}: {e}")
