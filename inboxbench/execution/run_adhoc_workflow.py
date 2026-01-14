@@ -132,15 +132,15 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
         try:
             summary = api.get_campaign_summary(camp_id)
             if summary:
-                # Robust extraction: check multiple possible keys
-                success_stats["sent"] = summary.get("contacts_contacted", summary.get("emails_sent", 0))
-                success_stats["opens"] = summary.get("opens", 0)
-                success_stats["replies"] = summary.get("replies", 0)
+                # Robust extraction: check keys found in debug (`emails_sent_count`, etc.)
+                success_stats["sent"] = summary.get("emails_sent_count", summary.get("contacts_contacted", 0))
+                success_stats["opens"] = summary.get("open_count", summary.get("opens", 0))
+                success_stats["replies"] = summary.get("reply_count", summary.get("replies", 0))
                 success_stats["leads"] = summary.get("leads_count", summary.get("opportunities", 0))
                 
                 # Check for zero stats warning
                 if success_stats["sent"] == 0:
-                     logging.info(f"Campaign {camp_name} returned 0 sent. Available keys: {list(summary.keys())}")
+                     logging.info(f"Campaign {camp_name} returned 0 sent. Keys: {list(summary.keys())}")
 
         except Exception as e:
             logging.warning(f"Failed to fetch stats for {camp_name}: {e}")
@@ -278,7 +278,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
         action = engine.evaluate_account(acc, analytics, force_status=force_status)
         
         # Default status/tags from current state
-        final_tags = acc.get("tags_resolved", [])
+        final_tags = list(acc.get("tags_resolved", [])) # Make a mutable copy
         
         raw_status = acc.get("status_v2", acc.get("status"))
         final_status = STATUS_MAP.get(raw_status, str(raw_status))
@@ -301,35 +301,33 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
             logging.info(f"ACTION REQUIRED: {email} -> {new_tag} ({reason})")
             
             # Execute Action (Update Instantly)
-            # Use SET tags to handle email-based updates (since ID might be missing)
+            # SAFE METHOD: Use add/remove instead of set_tags to preserve hidden tags
             
-            # 1. Calculate Desired Tag List (Names)
-            final_tag_names = list(acc.get("tags_resolved", []))
-            
-            # Remove Conflicts
-            for c_tag_name in CONFLICT_TAGS:
-                if c_tag_name != new_tag and c_tag_name in final_tag_names:
-                    final_tag_names.remove(c_tag_name)
-            
-            # Add New Tag
-            if new_tag not in final_tag_names:
-                final_tag_names.append(new_tag)
-            
-            # 2. Convert to IDs
-            final_tag_ids = []
-            for t_name in final_tag_names:
-                t_id = api.get_tag_id_by_name(t_name)
-                if t_id:
-                    final_tag_ids.append(t_id)
-                else:
-                    logging.warning(f"Could not resolve ID for tag '{t_name}' - preserving logic skip")
-            
-            # 3. Call API
-            logging.info(f"Setting tags for {email}: {final_tag_names}")
-            api.set_account_tags(email, final_tag_ids)
-            
-            # Update local state for report
-            final_tags = final_tag_names
+            acc_id = acc.get("id") # Need ID for toggle-resource
+            # If no ID (rare), we might have to skip or try lookup? List accounts returns IDs.
+            if not acc_id:
+                logging.warning(f"Account {email} has no ID inside logic. Skipping tag updates.")
+            else:
+                # 1. Remove Conflicts
+                for c_tag_name in CONFLICT_TAGS:
+                    if c_tag_name != new_tag and c_tag_name in final_tags:
+                        t_id_to_remove = api.get_tag_id_by_name(c_tag_name)
+                        if t_id_to_remove:
+                            logging.info(f"Removing conflict tag '{c_tag_name}' for {email}")
+                            api.remove_account_tag(acc_id, t_id_to_remove)
+                            if c_tag_name in final_tags: final_tags.remove(c_tag_name)
+                
+                # 2. Add New Tag
+                if new_tag not in final_tags:
+                    t_id_to_add = api.get_tag_id_by_name(new_tag)
+                    if t_id_to_add:
+                        logging.info(f"Adding tag '{new_tag}' for {email}")
+                        api.add_account_tag(acc_id, t_id_to_add)
+                        final_tags.append(new_tag)
+                    else:
+                        logging.warning(f"Could not resolve ID for new tag '{new_tag}'")
+
+            # Update local state for report (visuals only)
             
             # 2. Update Status/Warmup (if needed)
             if action.get("warmup") is False:
@@ -338,32 +336,17 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
 
             actions_log.append([
                 datetime.now(ZoneInfo("US/Mountain")).strftime('%Y-%m-%d %H:%M:%S'),
-                acc.get("customer_tag", "Unknown Client"), # Use Resolved Customer Tag
+                acc.get("customer_tag", "Unknown Client"), 
                 email,
-                final_status, # "Previous Status" roughly
+                final_status, 
                 new_tag,
                 reason,
                 "-",
                 "-"
             ])
             
-            # Determine Change Display for Tab
-            # Try to find previous status tag
-            prev_tag = "-"
-            valid_status_tags = {"Sending", "Warming", "Benched", "Sick"}
-            for t in acc.get("tags_resolved", []):
-                # Check for either "status-" legacy or new Title Case
-                if (t.startswith("status-") or t in valid_status_tags) and t != new_tag:
-                    prev_tag = t
-                    break
-            
-            if prev_tag == "-":
-                change_display = f"-> {new_tag}"
-            else:
-                 # Clean legacy "status-" prefix if present
-                p_clean = prev_tag.replace("status-", "").capitalize()
-                n_clean = new_tag.replace("status-", "").capitalize()
-                change_display = f"{p_clean} -> {n_clean}"
+            # Change Display Logic
+            change_display = f"-> {new_tag}"
         else:
             change_display = "-"
         
