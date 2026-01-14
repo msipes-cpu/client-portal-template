@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "pip3 install -r requirements.txt && npx prisma generate && next build",
+    "build": "npx prisma generate && next build",
     "start": "npx prisma db push && next start",
     "lint": "eslint"
   },
