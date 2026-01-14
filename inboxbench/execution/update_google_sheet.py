@@ -198,24 +198,28 @@ def update_client_sheet(client_data, spreadsheet_id):
              
         logging.info(f"Updated Snapshot for {client_data.get('client_name')}")
         
-        # 3. Cleanup: Delete "Sheet1" if it exists and is distinct from target
+        # 3. Cleanup: Delete "Sheet1" (case insensitive, robust)
         try:
             # Refresh metadata to be sure
             meta_clean = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
             sheets_clean = meta_clean.get('sheets', [])
             
-            sheet1_id = None
+            sheet_to_delete = None
             for s in sheets_clean:
-                if s['properties']['title'] == "Sheet1":
-                    sheet1_id = s['properties']['sheetId']
+                title_clean = s['properties']['title'].lower().replace(" ", "")
+                if title_clean == "sheet1":
+                    sheet_to_delete = s['properties']['sheetId']
                     break
             
-            if sheet1_id is not None and len(sheets_clean) > 1:
-                # Only delete if we have other sheets (avoid deleting the only sheet)
-                req_del = {'deleteSheet': {'sheetId': sheet1_id}}
-                service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': [req_del]}).execute()
-                logging.info("Deleted default 'Sheet1' for cleanup.")
-                
+            if sheet_to_delete is not None and len(sheets_clean) > 1:
+                # Iterate again to ensure we don't delete the only sheet (double check)
+                if len(sheets_clean) > 1:
+                    req_del = {'deleteSheet': {'sheetId': sheet_to_delete}}
+                    service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': [req_del]}).execute()
+                    logging.info("Deleted default 'Sheet1' for cleanup.")
+            elif sheet_to_delete is not None:
+                logging.info("Matched Sheet1 but it's the only sheet. Skipping delete.")
+
         except Exception as e:
             logging.warning(f"Cleanup of Sheet1 failed (non-critical): {e}")
 

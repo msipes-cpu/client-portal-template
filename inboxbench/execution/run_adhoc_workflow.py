@@ -282,6 +282,14 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
         raw_status = acc.get("status_v2", acc.get("status"))
         final_status = STATUS_MAP.get(raw_status, str(raw_status))
 
+        # DEBUG: Emit status for target account to see engine internals
+        if "michael" in email.lower() and "shift" in email.lower():
+             # Re-evaluate to dump state
+             d_tags = acc.get("tags_resolved", [])
+             d_score = acc.get("stat_warmup_score", 0)
+             d_found = [t for t in d_tags if t in ["Sick", "Benched", "Sending", "Warming"]]
+             emit_status("warning", f"DEBUG: {email} | Tags={d_tags} | Found={d_found} | Score={d_score} | Threshold={warmup_threshold} | Action={action}", 55)
+
         if action:
             # Prepare log entry
             email = action['email']
@@ -291,30 +299,36 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
             logging.info(f"ACTION REQUIRED: {email} -> {new_tag} ({reason})")
             
             # Execute Action (Update Instantly)
-            # 1. Update Tag
-            tag_id_new = api.get_tag_id_by_name(new_tag)
+            # Execute Action (Update Instantly)
+            # Use SET tags to handle email-based updates (since ID might be missing)
             
-            if tag_id_new:
-                acc_uuid = acc.get("id", acc.get("email"))
-                current_tag_ids = acc.get("tags", [])
-                
-                # Cleanup conflicts
-                for c_tag_name in CONFLICT_TAGS:
-                    if c_tag_name != new_tag and c_tag_name in final_tags:
-                         # Remove this conflict
-                         c_id = api.get_tag_id_by_name(c_tag_name)
-                         if c_id:
-                             logging.info(f"Removing conflicting tag '{c_tag_name}' from {email}")
-                             api.remove_account_tag(acc_uuid, c_id)
-                             if c_tag_name in final_tags:
-                                 final_tags.remove(c_tag_name)
-
-                # Add new tag (if not already present? add just in case)
-                api.add_account_tag(acc_uuid, tag_id_new, current_tag_ids) 
-                
-                # Update our local record for the report
-                if new_tag not in final_tags:
-                    final_tags.append(new_tag)
+            # 1. Calculate Desired Tag List (Names)
+            final_tag_names = list(acc.get("tags_resolved", []))
+            
+            # Remove Conflicts
+            for c_tag_name in CONFLICT_TAGS:
+                if c_tag_name != new_tag and c_tag_name in final_tag_names:
+                    final_tag_names.remove(c_tag_name)
+            
+            # Add New Tag
+            if new_tag not in final_tag_names:
+                final_tag_names.append(new_tag)
+            
+            # 2. Convert to IDs
+            final_tag_ids = []
+            for t_name in final_tag_names:
+                t_id = api.get_tag_id_by_name(t_name)
+                if t_id:
+                    final_tag_ids.append(t_id)
+                else:
+                    logging.warning(f"Could not resolve ID for tag '{t_name}' - preserving logic skip")
+            
+            # 3. Call API
+            logging.info(f"Setting tags for {email}: {final_tag_names}")
+            api.set_account_tags(email, final_tag_ids)
+            
+            # Update local state for report
+            final_tags = final_tag_names
             
             # 2. Update Status/Warmup (if needed)
             if action.get("warmup") is False:
