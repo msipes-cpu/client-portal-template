@@ -135,10 +135,19 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
                              email_to_acc_map[email]['tags'].append(t_id)
 
     # Pre-resolve tags for ALL accounts now, so we can use them
+    # DEBUG: Print Tag Map sample
+    logging.info(f"Tag Map Keys: {list(all_tag_map.keys())[:5]}")
+    logging.info(f"Tag Map Values: {list(all_tag_map.values())[:5]}")
+    
     for acc in accounts:
         t_ids = acc.get("tags", [])
         acc["tags_resolved"] = [all_tag_map.get(tid, str(tid)) for tid in t_ids]
         acc["customer_tag"] = get_customer_tag(acc["tags_resolved"])
+        
+        # DEBUG specific account
+        if "powersipesautomation" in acc.get("email", ""):
+            logging.info(f"debug_acc: {acc.get('email')} | tags: {t_ids} | resolved: {acc['tags_resolved']} | customer: {acc['customer_tag']}")
+
 
     total_sent = 0
     total_replies = 0
