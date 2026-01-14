@@ -391,6 +391,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
         "accounts": processed_accounts,
         "share_email": report_email,  # Pass for fallback sharing
         "report_email": report_email
+    }
     
     # 4. Generate Transition Summary (for Sheet & Email)
     transition_counts = {} # Only counts changes
