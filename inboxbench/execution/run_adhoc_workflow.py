@@ -542,7 +542,7 @@ if __name__ == "__main__":
     parser.add_argument("--sheet", required=False)
     parser.add_argument("--report_email", required=False)
     parser.add_argument("--warmup_threshold", type=int, default=70, help="Min Warmup Score (Default 70)")
-    parser.add_argument("--bench_percent", type=int, default=0, help="Target Bench % (Default 0)")
+    parser.add_argument("--bench_percent", type=int, default=0, help="Target Bench %% (Default 0)")
     parser.add_argument("--ignore_customer_tags", action="store_true", help="Ignore (preserve) non-system tags")
     args = parser.parse_args()
     
