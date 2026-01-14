@@ -173,16 +173,24 @@ class InstantlyAPI:
     def get_campaign_summary(self, campaign_id):
         """Get summary stats for a campaign."""
         # V2: /campaigns/analytics with campaign_id param
-        # The result is likely a list or single object?
-        # Let's assume list of 1 if ID is passed.
+        # API behavior observation: Param might be ignored, returning list of all analytics.
+        # We must filter the list to find our specific campaign_id.
         data = self._get("/campaigns/analytics", params={"campaign_id": campaign_id})
-        # If it returns a list, take first. Or if it returns object.
-        if isinstance(data, list) and len(data) > 0:
-            return data[0]
+        
+        # If it returns a list, find the matching ID
+        if isinstance(data, list):
+            for item in data:
+                if item.get("campaign_id") == campaign_id:
+                    return item
+            # If explicit match not found
+            return {}
+
         if isinstance(data, dict):
              # check if it has 'items'
-             if "items" in data:
-                 return data["items"][0] if data["items"] else {}
+             if "items" in data and isinstance(data["items"], list):
+                 for item in data["items"]:
+                    if item.get("campaign_id") == campaign_id:
+                        return item
              return data
         return {}
 
