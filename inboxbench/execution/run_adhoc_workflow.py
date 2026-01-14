@@ -77,6 +77,43 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
         logging.warning(f"Failed to fetch tag map: {e}")
         all_tag_map = {}
 
+    # --- FETCH HIDDEN TAG MAPPINGS (V2 Fix) ---
+    logging.info("Fetching hidden tag mappings for resources...")
+    try:
+        # Collect IDs/Emails
+        r_ids = []
+        # Campaign IDs
+        c_map = {c.get("id"): c for c in campaigns if c.get("id")}
+        r_ids.extend(list(c_map.keys()))
+        
+        # Account Emails (as IDs)
+        a_map = {a.get("email"): a for a in accounts if a.get("email")}
+        r_ids.extend(list(a_map.keys()))
+        
+        mappings = api.get_custom_tag_mappings(r_ids)
+        logging.info(f"Found {len(mappings)} hidden tag associations.")
+        
+        for m in mappings:
+            rid = m.get("resource_id")
+            tid = m.get("tag_id")
+            if not tid: continue
+            
+            # Check Campaign Match
+            if rid in c_map:
+                tgt = c_map[rid]
+                if "tags" not in tgt: tgt["tags"] = []
+                if tid not in tgt["tags"]: tgt["tags"].append(tid)
+                
+            # Check Account Match
+            elif rid in a_map:
+                tgt = a_map[rid]
+                if "tags" not in tgt: tgt["tags"] = []
+                # Ensure we don't duplicate if already present
+                if tid not in tgt["tags"]: tgt["tags"].append(tid)
+                
+    except Exception as e:
+        logging.warning(f"Failed to fetch hidden mappings: {e}")
+
     relevant_status_tags = ["Sending", "Sick", "Warming", "Benched", "Active", "Dead"]
     email_to_acc_map = {acc['email']: acc for acc in accounts}
     
