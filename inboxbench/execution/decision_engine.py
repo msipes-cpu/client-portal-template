@@ -50,28 +50,45 @@ class DecisionEngine:
         # Assume valid unless api says otherwise
         auth_valid = True 
 
-        # Current Status Tag
-        status_tag = self._get_status_tag(current_tags)
+        found_status_tags = [t for t in current_tags if t in STATUS_TAGS]
+        has_conflicts = len(found_status_tags) > 1
         
-        logging.info(f"Evaluating {email} | Age: {age_days}d | Status: {status_tag} | Score: {warmup_score}")
+        # Determine effective current status (Prioritize Safety: Sick > Warming > Benched > Sending)
+        status_tag = None
+        if has_conflicts:
+            if TAG_STATUS_SICK in found_status_tags: status_tag = TAG_STATUS_SICK
+            elif TAG_STATUS_WARMING in found_status_tags: status_tag = TAG_STATUS_WARMING
+            elif TAG_STATUS_BENCHED in found_status_tags: status_tag = TAG_STATUS_BENCHED
+            elif TAG_STATUS_SENDING in found_status_tags: status_tag = TAG_STATUS_SENDING
+        else:
+            status_tag = found_status_tags[0] if found_status_tags else None
+
+        
+        logging.info(f"Evaluating {email} | Age: {age_days}d | Status: {status_tag} | Score: {warmup_score} | Conflicts: {has_conflicts}")
 
         # --- RULE 1: New Account Check ---
         if age_days < MIN_AGE_DAYS:
-            if status_tag != TAG_STATUS_WARMING:
-                return self._create_action(email, "Rule 1: New Account (<14 days)", TAG_STATUS_WARMING, warmup=True, campaigns="REMOVE")
+            if status_tag != TAG_STATUS_WARMING or has_conflicts:
+                reason = "Rule 1: New Account (<14 days)"
+                if has_conflicts and status_tag == TAG_STATUS_WARMING: reason += " (Cleanup)"
+                return self._create_action(email, reason, TAG_STATUS_WARMING, warmup=True, campaigns="REMOVE")
             return None # No change needed
 
         # --- RULE 2: Auth Check ---
         if not auth_valid:
-             if status_tag != TAG_STATUS_SICK:
-                return self._create_action(email, "Rule 2: Auth Invalid", TAG_STATUS_SICK, warmup=False, campaigns="REMOVE")
+             if status_tag != TAG_STATUS_SICK or has_conflicts:
+                reason = "Rule 2: Auth Invalid"
+                if has_conflicts and status_tag == TAG_STATUS_SICK: reason += " (Cleanup)"
+                return self._create_action(email, reason, TAG_STATUS_SICK, warmup=False, campaigns="REMOVE")
              return None
 
         # --- RULE 3: Warmup Health Check ---
         # Using Warmup Score as proxy for now since API doesn't give rates easily
         if warmup_score < warmup_min:
-            if status_tag != TAG_STATUS_SICK:
-                 return self._create_action(email, f"Rule 3: Low Health Score ({warmup_score} < {warmup_min})", TAG_STATUS_SICK, warmup=True, campaigns="REMOVE")
+            if status_tag != TAG_STATUS_SICK or has_conflicts:
+                 reason = f"Rule 3: Low Health Score ({warmup_score} < {warmup_min})"
+                 if has_conflicts and status_tag == TAG_STATUS_SICK: reason += " (Cleanup)"
+                 return self._create_action(email, reason, TAG_STATUS_SICK, warmup=True, campaigns="REMOVE")
             return None
 
         # --- RULE 4: Warmup Recovery Check ---
@@ -80,18 +97,28 @@ class DecisionEngine:
             # Simplified: If score is perfect now, move to BENCHED
             if warmup_score > 95:
                  return self._create_action(email, "Rule 4: Recovered (Score > 95)", TAG_STATUS_BENCHED, warmup=True, campaigns="REMOVE")
+            
+            # If still sick, but had conflicts, clean them up
+            if has_conflicts:
+                return self._create_action(email, "Conflicting Status Tags (Cleanup)", TAG_STATUS_SICK, warmup=True, campaigns="REMOVE")
             return None
         
         # --- FORCED ROTATION (Takes priority over Rule 5/6 if healthy) ---
         if force_status:
-             if force_status == TAG_STATUS_BENCHED and status_tag != TAG_STATUS_BENCHED:
+             if force_status == TAG_STATUS_BENCHED and (status_tag != TAG_STATUS_BENCHED or has_conflicts):
                  return self._create_action(email, "Rule 5: Rotation Target (Force Bench)", TAG_STATUS_BENCHED, warmup=True, campaigns="REMOVE")
              
-             if force_status == TAG_STATUS_SENDING and status_tag != TAG_STATUS_SENDING:
+             if force_status == TAG_STATUS_SENDING and (status_tag != TAG_STATUS_SENDING or has_conflicts):
                  return self._create_action(email, "Rule 6: Rotation Target (Force Sending)", TAG_STATUS_SENDING, warmup=True, campaigns="ADD")
+             
+             # If force matches status but conflicts exist
+             if has_conflicts and status_tag == force_status:
+                  return self._create_action(email, "Conflicting Status Tags (Cleanup)", force_status, warmup=True, campaigns=None) # None campaigns preserves state
 
         # --- RULE 5: Bench Rotation Check (Default Logic if no force) ---
         if status_tag == TAG_STATUS_SENDING:
+            if has_conflicts:
+                 return self._create_action(email, "Conflicting Status Tags (Cleanup)", TAG_STATUS_SENDING, warmup=True, campaigns="ADD")
             pass
 
         # --- RULE 6: Return to Sending Check (Default Logic if no force) ---
@@ -99,11 +126,18 @@ class DecisionEngine:
             # If healthy, bring back.
             if warmup_score >= 90:
                  return self._create_action(email, "Rule 6: Rested & Healthy", TAG_STATUS_SENDING, warmup=True, campaigns="ADD")
+            
+            if has_conflicts:
+                 return self._create_action(email, "Conflicting Status Tags (Cleanup)", TAG_STATUS_BENCHED, warmup=True, campaigns="REMOVE")
             return None
 
         # Default: If no status tag, set to Sending if old enough
         if not status_tag and age_days >= MIN_AGE_DAYS:
              return self._create_action(email, "Rule 0: Unlabeled -> Sending", TAG_STATUS_SENDING, warmup=True, campaigns="ADD")
+        
+        # Catch-all conflict cleanup
+        if has_conflicts and status_tag:
+             return self._create_action(email, "Conflicting Status Tags (Cleanup)", status_tag, warmup=True, campaigns=None)
 
         return None
 

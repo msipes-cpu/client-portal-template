@@ -103,6 +103,11 @@ def update_client_sheet(client_data, spreadsheet_id):
         
         logging.info(f"Targeting sheet tab: '{target_sheet_title}'")
         
+        # 0. Ensure Sharing (If requested)
+        share_target = client_data.get('share_email') or client_data.get('report_email')
+        if share_target:
+             share_sheet(spreadsheet_id, share_target)
+
         # Prepare data for the distinct tables
         # 1. Overview
         overview_data = [
@@ -178,9 +183,20 @@ def update_client_sheet(client_data, spreadsheet_id):
         snapshot_values.extend([account_header] + account_rows)
         
         # Write Snapshot (Overwrite)
-        write_to_tab(service, spreadsheet_id, "Daily Snapshot", snapshot_values, mode="OVERWRITE")
-
-        logging.info(f"Updated Daily Snapshot for {client_data.get('client_name')}")
+        # Use the decided target sheet title if possible, or force "Daily Snapshot" BUT
+        # "Daily Snapshot" is what we prefer for the report.
+        # Let's try to write to "Daily Snapshot", but write_to_tab will now handle the fallback
+        # to the FIRST available sheet if Daily Snapshot fails to create.
+        
+        write_success, write_err = write_to_tab(service, spreadsheet_id, "Daily Snapshot", snapshot_values, mode="OVERWRITE")
+        
+        if not write_success:
+             logging.warning(f"Failed to write to primary tab, error: {write_err}")
+             # We could try one last ditch effort to "Sheet1" if the error wasn't permission related?
+             # But write_to_tab now has internal fallback.
+             return False, write_err
+             
+        logging.info(f"Updated Snapshot for {client_data.get('client_name')}")
         return True, None
 
     except HttpError as err:
@@ -215,6 +231,34 @@ def update_client_sheet(client_data, spreadsheet_id):
         logging.error(f"Unexpected error in update_client_sheet: {e}")
         return False, str(e)
 
+def share_sheet(file_id, email):
+    """Shares the file with the specified email (Writer access)."""
+    if not email: return
+    
+    creds = get_credentials()
+    if not creds: return
+
+    try:
+        drive_service = build('drive', 'v3', credentials=creds)
+        # Create Permission
+        # Note: We don't check if it exists because the API doesn't easily support that 
+        # without listing, and 'create' is generally safe (might return existing).
+        # To avoid spamming, we could list but that adds latency.
+        # For testing, we just try to add.
+        
+        drive_service.permissions().create(
+            fileId=file_id,
+            body={'type': 'user', 'role': 'writer', 'emailAddress': email},
+            fields='id',
+            emailMessage="Here is your InboxBench Automation Report."
+        ).execute()
+        logging.info(f"Shared sheet {file_id} with {email}")
+    except HttpError as err:
+        # Ignore if already exists or other non-critical errors?
+        logging.warning(f"Share warning for {email}: {err}")
+    except Exception as e:
+        logging.error(f"Share failed for {email}: {e}")
+
 def create_and_share_sheet(title, share_email=None):
     """Creates a new spreadsheet."""
     creds = get_credentials()
@@ -227,16 +271,7 @@ def create_and_share_sheet(title, share_email=None):
 
     # Share if email provided
     if share_email:
-        try:
-            drive_service = build('drive', 'v3', credentials=creds)
-            drive_service.permissions().create(
-                fileId=sheet_id,
-                body={'type': 'user', 'role': 'writer', 'emailAddress': share_email},
-                fields='id'
-            ).execute()
-            logging.info(f"Shared new sheet with {share_email}")
-        except Exception as e:
-            logging.error(f"Failed to share sheet: {e}")
+        share_sheet(sheet_id, share_email)
 
     return sheet_id, sheet_url
 
@@ -245,24 +280,52 @@ def write_to_tab(service, spreadsheet_id, tab_name, data, mode="OVERWRITE"):
     Helper to write data to a specific tab.
     Creates the tab if it doesn't exist.
     """
-    # 1. Ensure tab exists
+    # 1. Determine Target Tab
+    target_tab = tab_name
+    
     try:
         sheet_metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         sheets = sheet_metadata.get('sheets', [])
         titles = [s['properties']['title'] for s in sheets]
         
         if tab_name not in titles:
-            req = {'addSheet': {'properties': {'title': tab_name}}}
-            service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': [req]}).execute()
+            # Try to create it
+            try:
+                req = {'addSheet': {'properties': {'title': tab_name}}}
+                service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': [req]}).execute()
+                logging.info(f"Created new tab: {tab_name}")
+            except Exception as e:
+                logging.warning(f"Could not create tab {tab_name}: {e}. Fallback to default.")
+                # Fallback: Use the first sheet found if creation fails
+                if titles:
+                    target_tab = titles[0]
+                    # Optional: Rename it to expected name if it's the default "Sheet1"
+                    if target_tab == "Sheet1":
+                        try:
+                            # Rename Sheet1 -> tab_name
+                            sheet_id_0 = sheets[0]['properties']['sheetId']
+                            req_rename = {
+                                'updateSheetProperties': {
+                                    'properties': {'sheetId': sheet_id_0, 'title': tab_name},
+                                    'fields': 'title'
+                                }
+                            }
+                            service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': [req_rename]}).execute()
+                            target_tab = tab_name # Rename success
+                            logging.info(f"Renamed {titles[0]} to {target_tab}")
+                        except:
+                            pass # Keep using "Sheet1" or whatever it is
     except Exception as e:
-        logging.warning(f"Could not check/create tab {tab_name}: {e}")
+        logging.error(f"Metadata fetch failed: {e}")
+        # If we can't fetch metadata, we probably can't write either, but let's try writing to the requested tab blindly
+        pass
 
     # 2. Write Data
     try:
-        range_name = f"'{tab_name}'!A1"
+        range_name = f"'{target_tab}'!A1"
         
         if mode == "OVERWRITE":
-            service.spreadsheets().values().clear(spreadsheetId=spreadsheet_id, range=f"'{tab_name}'").execute()
+            service.spreadsheets().values().clear(spreadsheetId=spreadsheet_id, range=f"'{target_tab}'").execute()
             service.spreadsheets().values().update(
                 spreadsheetId=spreadsheet_id, range=range_name,
                 valueInputOption='RAW', body={'values': data}
@@ -273,14 +336,15 @@ def write_to_tab(service, spreadsheet_id, tab_name, data, mode="OVERWRITE"):
                 valueInputOption='RAW', insertDataOption='INSERT_ROWS', body={'values': data}
             ).execute()
 
+        logging.info(f"Successfully wrote {len(data)} rows to {target_tab}")
+        return True, None
+
     except HttpError as err:
-        logging.error(f"Google Sheets API Error: {err}")
+        logging.error(f"Google Sheets API Error writing to {target_tab}: {err}")
         return False, str(err)
     except Exception as e:
-        logging.error(f"Unexpected error in update_client_sheet: {e}")
+        logging.error(f"Unexpected error in write_to_tab: {e}")
         return False, str(e)
-    
-    return True, None
 
 if __name__ == "__main__":
     # Test with dummy data and config

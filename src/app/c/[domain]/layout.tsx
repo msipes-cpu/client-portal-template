@@ -1,15 +1,16 @@
 
 import DashboardLayout from "@/components/DashboardLayout";
 
-export default function Layout({
+export default async function Layout({
     children,
     params
 }: {
     children: React.ReactNode,
-    params: any
+    params: Promise<{ domain: string }>
 }) {
+    const resolvedParams = await params;
     return (
-        <DashboardLayout params={params}>
+        <DashboardLayout params={resolvedParams}>
             {children}
         </DashboardLayout>
     );
