@@ -28,6 +28,7 @@ export default function DashboardLayout({ children, params }: { children: React.
 
     const navItems = [
         { icon: LayoutDashboard, label: "Overview", href: baseUrl },
+        { icon: Zap, label: "Lead Enrichment", href: `${baseUrl}/tools/apollo` },
     ];
 
     return (
