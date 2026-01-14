@@ -36,6 +36,12 @@ export default async function middleware(req: NextRequest) {
         return NextResponse.next();
     }
 
+    // If path already starts with /c/currentHost (e.g. via explicit link), 
+    // we just rewrite to it directly effectively treating it as the internal path
+    if (url.pathname.startsWith(`/c/${currentHost}`)) {
+        return NextResponse.rewrite(url);
+    }
+
     // Rewrite to the tenant path
     // e.g. client.sipesautomation.com/foo -> /c/client/foo
     return NextResponse.rewrite(new URL(`/c/${currentHost}${url.pathname}`, req.url));
