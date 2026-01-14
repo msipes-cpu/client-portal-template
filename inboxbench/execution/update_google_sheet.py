@@ -194,7 +194,8 @@ def update_client_sheet(client_data, spreadsheet_id):
             logging.warning(f"Permission Error ({status_code}). Attempting fallback to NEW sheet...")
             try:
                 new_title = f"InboxBench Report - {client_data.get('client_name')}"
-                new_id, new_url = create_and_share_sheet(new_title)
+                share_target = client_data.get('share_email') or client_data.get('report_email')
+                new_id, new_url = create_and_share_sheet(new_title, share_email=share_target)
                 logging.info(f"Created NEW Sheet: {new_url}")
                 
                 # Recursive retry with new ID
@@ -220,7 +221,24 @@ def create_and_share_sheet(title, share_email=None):
     service = build('sheets', 'v4', credentials=creds)
     spreadsheet = {'properties': {'title': title}}
     spreadsheet = service.spreadsheets().create(body=spreadsheet, fields='spreadsheetId,spreadsheetUrl').execute()
-    return spreadsheet.get('spreadsheetId'), spreadsheet.get('spreadsheetUrl')
+    
+    sheet_id = spreadsheet.get('spreadsheetId')
+    sheet_url = spreadsheet.get('spreadsheetUrl')
+
+    # Share if email provided
+    if share_email:
+        try:
+            drive_service = build('drive', 'v3', credentials=creds)
+            drive_service.permissions().create(
+                fileId=sheet_id,
+                body={'type': 'user', 'role': 'writer', 'emailAddress': share_email},
+                fields='id'
+            ).execute()
+            logging.info(f"Shared new sheet with {share_email}")
+        except Exception as e:
+            logging.error(f"Failed to share sheet: {e}")
+
+    return sheet_id, sheet_url
 
 def write_to_tab(service, spreadsheet_id, tab_name, data, mode="OVERWRITE"):
     """

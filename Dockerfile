@@ -1,9 +1,7 @@
-FROM node:20-alpine AS base
+FROM node:20-slim AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
-RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager
@@ -42,8 +40,12 @@ ENV NODE_ENV=production
 # Uncomment the following line in case you want to disable telemetry during runtime.
 # ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN apk add --no-cache openssl python3 py3-pip tzdata
-# Install Python dependencies and additional node modules
+# Install runtime dependencies (Debian/Slim)
+RUN apt-get update -y && \
+    apt-get install -y openssl python3 python3-pip python3-venv tzdata netcat-openbsd dnsutils && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
 RUN pip3 install requests google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client dnspython resend --break-system-packages
 
 RUN addgroup --system --gid 1001 nodejs
@@ -73,5 +75,6 @@ ENV PORT=3000
 # server.js is created by next build from the standalone output
 # https://nextjs.org/docs/pages/api-reference/next-config-js/output
 ENV HOSTNAME="0.0.0.0"
+
 # Run migrations before starting the server
 CMD npx prisma migrate deploy && node server.js
