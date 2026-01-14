@@ -53,13 +53,22 @@ class DecisionEngine:
         found_status_tags = [t for t in current_tags if t in STATUS_TAGS]
         has_conflicts = len(found_status_tags) > 1
         
-        # Determine effective current status (Prioritize Safety: Sick > Warming > Benched > Sending)
+        # Determine effective current status (Prioritize based on Score if conflicting)
         status_tag = None
         if has_conflicts:
-            if TAG_STATUS_SICK in found_status_tags: status_tag = TAG_STATUS_SICK
-            elif TAG_STATUS_WARMING in found_status_tags: status_tag = TAG_STATUS_WARMING
-            elif TAG_STATUS_BENCHED in found_status_tags: status_tag = TAG_STATUS_BENCHED
-            elif TAG_STATUS_SENDING in found_status_tags: status_tag = TAG_STATUS_SENDING
+             # Specific Conflict: Sick vs Benched
+             if TAG_STATUS_SICK in found_status_tags and TAG_STATUS_BENCHED in found_status_tags:
+                 # Use Score as Truth (Dynamic Threshold)
+                 if warmup_score < warmup_min:
+                     status_tag = TAG_STATUS_SICK
+                 else:
+                     status_tag = TAG_STATUS_BENCHED
+             else:
+                # Fallback Priority
+                if TAG_STATUS_SICK in found_status_tags: status_tag = TAG_STATUS_SICK
+                elif TAG_STATUS_WARMING in found_status_tags: status_tag = TAG_STATUS_WARMING
+                elif TAG_STATUS_BENCHED in found_status_tags: status_tag = TAG_STATUS_BENCHED
+                elif TAG_STATUS_SENDING in found_status_tags: status_tag = TAG_STATUS_SENDING
         else:
             status_tag = found_status_tags[0] if found_status_tags else None
 

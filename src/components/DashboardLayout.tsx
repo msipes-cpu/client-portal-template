@@ -28,12 +28,8 @@ export default function DashboardLayout({ children, params }: { children: React.
 
     const navItems = [
         { icon: LayoutDashboard, label: "Overview", href: baseUrl },
+        { icon: Zap, label: "Automations", href: `${baseUrl}/automations` },
     ];
-
-    // Only show Admin tools on the 'sa' subdomain
-    if (domain === 'sa') {
-        navItems.push({ icon: Zap, label: "Lead Enrichment", href: `${baseUrl}/tools/apollo` });
-    }
 
     return (
         <div className="min-h-screen bg-background flex overflow-hidden">
