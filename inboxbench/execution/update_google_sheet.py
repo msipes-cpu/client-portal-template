@@ -123,10 +123,11 @@ def update_client_sheet(client_data, spreadsheet_id):
         ]
 
         # 2. Campaign Performance
-        campaign_header = ["Campaign Name", "Status", "Sent", "Opens", "Replies", "Click Rate", "Reply Rate"]
+        campaign_header = ["Customer Tag", "Campaign Name", "Status", "Sent", "Opens", "Replies", "Click Rate", "Reply Rate"]
         campaign_rows = []
         for camp in client_data.get('campaigns', []):
             campaign_rows.append([
+                camp.get('customer_tag', '-'),
                 camp.get('name', 'Unknown'),
                 camp.get('status', 'Unknown'),
                 camp.get('sent', 0),
@@ -137,10 +138,11 @@ def update_client_sheet(client_data, spreadsheet_id):
             ])
         
         # 3. Account Health
-        account_header = ["Email", "Status", "Daily Limit", "Warmup Score", "Tags", "Change"]
+        account_header = ["Customer Tag", "Email", "Status", "Daily Limit", "Warmup Score", "Tags", "Change"]
         account_rows = []
         for acc in client_data.get('accounts', []):
             account_rows.append([
+                acc.get('customer_tag', '-'),
                 acc.get('email', 'Unknown'),
                 acc.get('status', 'Unknown'),
                 acc.get('daily_limit', 0),

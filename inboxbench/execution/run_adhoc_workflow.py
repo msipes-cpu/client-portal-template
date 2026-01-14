@@ -58,36 +58,56 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
     # 3. Analyze Data
     emit_status("analyzing", f"Analyzing {len(campaigns)} campaigns...", 30)
     
-    # --- HYDRATE TAGS ---
+    # --- HYDRATE TAGS & MAPS ---
     logging.info(f"Hydrating account tags... (Ignore Customer Tags: {ignore_customer_tags})")
-    all_tag_map = api.get_all_tags_map()
-    # Include Legacy tags here so we can detect and remove them
-    relevant_status_tags = ["Sending", "Sick", "Warming", "Benched", "Active", "Dead"]
     
+    # Helper to identify Customer Tag (Non-Status)
+    def get_customer_tag(tags_list):
+        """Returns the first tag that is NOT a system status tag."""
+        valid_status = {"Sending", "Sick", "Warming", "Benched", "Active", "Dead", "Completed", "Paused", "Inactive"}
+        for t in tags_list:
+            if t not in valid_status and not t.startswith("status-"):
+                return t
+        return "-"
+
+    # Fetch Tag Map EARLY so campaigns can use it
+    try:
+        all_tag_map = api.get_all_tags_map()
+    except Exception as e:
+        logging.warning(f"Failed to fetch tag map: {e}")
+        all_tag_map = {}
+
+    relevant_status_tags = ["Sending", "Sick", "Warming", "Benched", "Active", "Dead"]
     email_to_acc_map = {acc['email']: acc for acc in accounts}
     
+    # Hydrate Account Tags (Resolve IDs to Names)
+    # Also manual hydration for status tags if API didn't return them in list_accounts
     for t_name in relevant_status_tags:
         t_id = api.get_tag_id_by_name(t_name)
         if t_id:
             # unique list of accounts with this tag
             tagged_accs_data = api.list_accounts(tag_ids=[t_id])
-            if isinstance(tagged_accs_data, list): # Check type safety
+            if isinstance(tagged_accs_data, list):
                  for t_acc in tagged_accs_data:
                      email = t_acc.get('email')
                      if email in email_to_acc_map:
-                         # Ensure 'tags' key exists and is list
                          if 'tags' not in email_to_acc_map[email]:
                              email_to_acc_map[email]['tags'] = []
                          # Avoid dupes
                          if t_id not in email_to_acc_map[email]['tags']:
                              email_to_acc_map[email]['tags'].append(t_id)
 
+    # Pre-resolve tags for ALL accounts now, so we can use them
+    for acc in accounts:
+        t_ids = acc.get("tags", [])
+        acc["tags_resolved"] = [all_tag_map.get(tid, str(tid)) for tid in t_ids]
+        acc["customer_tag"] = get_customer_tag(acc["tags_resolved"])
+
     total_sent = 0
     total_replies = 0
     total_leads = 0
     
     processed_campaigns = []
-    # Limit to top 15 campaigns to avoid timeout
     
     count = 0
     max_camps = 15
@@ -96,22 +116,32 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
 
     for camp in camps_to_process:
         count += 1
-        # Update progress within the analysis phase (30% to 70%)
         progress_val = 30 + int((count / total_camps_count) * 40)
         emit_status("analyzing_campaign", f"Analyzing campaign: {camp.get('name')}...", progress_val)
         
         camp_id = camp.get("id")
         camp_name = camp.get("name")
         
+        # Resolve Campaign Tags
+        c_t_ids = camp.get("tags", [])
+        c_tags_resolved = [all_tag_map.get(tid, str(tid)) for tid in c_t_ids]
+        camp_customer_tag = get_customer_tag(c_tags_resolved)
+
         # Fetch summary
         success_stats = {"sent": 0, "opens": 0, "replies": 0, "leads": 0}
         try:
             summary = api.get_campaign_summary(camp_id)
             if summary:
+                # Robust extraction: check multiple possible keys
                 success_stats["sent"] = summary.get("contacts_contacted", summary.get("emails_sent", 0))
                 success_stats["opens"] = summary.get("opens", 0)
                 success_stats["replies"] = summary.get("replies", 0)
                 success_stats["leads"] = summary.get("leads_count", summary.get("opportunities", 0))
+                
+                # Check for zero stats warning
+                if success_stats["sent"] == 0:
+                     logging.info(f"Campaign {camp_name} returned 0 sent. Available keys: {list(summary.keys())}")
+
         except Exception as e:
             logging.warning(f"Failed to fetch stats for {camp_name}: {e}")
 
@@ -121,13 +151,13 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
 
         # Campaign Status Mapping
         raw_status = camp.get("status_v2", camp.get("status"))
-        # 1=Active, 2=Paused, 3=Completed, 0=Inactive/Draft
         c_status_map = {1: "Active", 2: "Paused", 3: "Completed", 0: "Inactive"}
         final_status = c_status_map.get(raw_status, str(raw_status))
 
         processed_campaigns.append({
             "name": camp_name,
             "status": final_status,
+            "customer_tag": camp_customer_tag,
             "sent": success_stats["sent"],
             "opens": success_stats["opens"],
             "replies": success_stats["replies"],
@@ -135,30 +165,19 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
             "reply_rate": 0
         })
 
-    # Fetch Tags Map
-    try:
-        tag_map = api.get_all_tags_map()
-    except:
-        tag_map = {}
-
     # Initialize Decision Engine
     from execution.decision_engine import DecisionEngine
     engine_config = {
         "warmup_threshold": warmup_threshold,
         "bench_percent": bench_percent
     }
-    engine = DecisionEngine(api, config=engine_config)
+    engine = DecisionEngine(api, config=engine_config) # Tag map is passed or fetched internally? Engine might need update
 
     processed_accounts = []
-    actions_log = [] # For the "Action Log" tab
+    actions_log = [] 
 
     emit_status("running_engine", f"Running Decision Engine on {len(accounts)} accounts...", 40)
     
-    # Pre-resolve tags for engine
-    for acc in accounts:
-        t_ids = acc.get("tags", [])
-        acc["tags_resolved"] = [tag_map.get(tid, str(tid)) for tid in t_ids]
-
     # Status Mapping
     STATUS_MAP = {
         1: "Active",
@@ -171,41 +190,28 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
     bench_percent = engine_config.get("bench_percent", 0)
     force_map = {}
     
-    # Validation Helper
-    def get_client_bucket(tags):
-        valid_status = {"Sending", "Sick", "Warming", "Benched", "Active", "Dead"}
-        # Find first tag that is NOT a status tag and NOT legacy status-
-        for t in tags:
-            if t not in valid_status and not t.startswith("status-"):
-                return t
-        return "General"
-
     if bench_percent > 0:
         # Determine Buckets
         if ignore_customer_tags:
-            # Single Bucket: "Global"
             buckets = {"Global": {"accounts": accounts, "campaigns": campaigns}}
         else:
-            # Hydrate Campaign Tags for Bucket Matching
-            for camp in campaigns:
-                # Campaigns might return tag IDs, need resolution? 
-                # Assuming campaigns have 'tags' list of IDs.
-                c_t_ids = camp.get("tags", [])
-                camp["tags_resolved"] = [tag_map.get(tid, str(tid)) for tid in c_t_ids]
-
-            # Group Accounts
+            # Group Accounts using pre-calculated customer_tag
             buckets = {}
             for acc in accounts:
-                b_key = get_client_bucket(acc.get("tags_resolved", []))
+                b_key = acc.get("customer_tag", "General")
                 if b_key not in buckets: buckets[b_key] = {"accounts": [], "campaigns": []}
                 buckets[b_key]["accounts"].append(acc)
             
-            # Map Campaigns to Buckets (for "Can't Swap" rule)
+            # Map Campaigns to Buckets
+            # We already calculated tags for processed_campaigns, but "campaigns" list might be raw
+            # Need to ensure global campaigns list has 'customer_tag' or resolve it again
             for camp in campaigns:
-                b_key = get_client_bucket(camp.get("tags_resolved", []))
-                # Add to bucket if exists (account bucket), or create new? 
-                # If we have a campaign for "Sipes" but no accounts, it's irrelevant for account rotation.
-                # If we have accounts for "Sipes" but no campaigns, we need to know.
+                # Quick resolve for rotation logic if not processed above
+                if "tags_resolved" not in camp:
+                     c_t_ids = camp.get("tags", [])
+                     camp["tags_resolved"] = [all_tag_map.get(tid, str(tid)) for tid in c_t_ids]
+                
+                b_key = get_customer_tag(camp["tags_resolved"])
                 if b_key not in buckets: buckets[b_key] = {"accounts": [], "campaigns": []}
                 buckets[b_key]["campaigns"].append(camp)
 
@@ -227,15 +233,10 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
             
             total_pool = len(active_candidates) + len(benched_candidates)
             if total_pool > 0:
-                # Rule: "if an inbox has a tag... and you don't have any campaigns... you can't swap"
-                # Implementation: If 0 campaigns in this bucket, TARGET BENCH = 100% (Bench All)
-                # Or simply: Target Active = 0.
-                
                 has_campaigns = len(b_camps) > 0
-                if ignore_customer_tags: has_campaigns = True # Global pool assumes campaigns exist or doesn't care
+                if ignore_customer_tags: has_campaigns = True 
                 
                 if not has_campaigns and b_name != "General":
-                    # No campaigns for this explicit client tag. Force Bench All.
                     target_bench_count = total_pool
                     logging.info(f"Bucket '{b_name}': No campaigns found. Forcing 100% Bench.")
                 else:
@@ -264,7 +265,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
     count = 0
     total_accounts = len(accounts)
     
-    # Conflict List (Tags to remove if they exist and aren't the new tag)
+    # Conflict List
     CONFLICT_TAGS = {"Active", "Dead", "Sending", "Sick", "Warming", "Benched"}
 
     for acc in accounts:
@@ -283,6 +284,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
         final_status = STATUS_MAP.get(raw_status, str(raw_status))
 
         # DEBUG: Emit status for target account to see engine internals
+        email = acc.get("email")
         if "michael" in email.lower() and "shift" in email.lower():
              # Re-evaluate to dump state
              d_tags = acc.get("tags_resolved", [])
@@ -298,7 +300,6 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
             
             logging.info(f"ACTION REQUIRED: {email} -> {new_tag} ({reason})")
             
-            # Execute Action (Update Instantly)
             # Execute Action (Update Instantly)
             # Use SET tags to handle email-based updates (since ID might be missing)
             
@@ -337,7 +338,7 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
 
             actions_log.append([
                 datetime.now(ZoneInfo("US/Mountain")).strftime('%Y-%m-%d %H:%M:%S'),
-                "Unknown Client", 
+                acc.get("customer_tag", "Unknown Client"), # Use Resolved Customer Tag
                 email,
                 final_status, # "Previous Status" roughly
                 new_tag,
@@ -356,8 +357,6 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
                     prev_tag = t
                     break
             
-            # If no previous stat tag found, maybe use mapped status?
-            # Or just show "-> NewTag"
             if prev_tag == "-":
                 change_display = f"-> {new_tag}"
             else:
@@ -370,13 +369,17 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
         
         # 3. Format Strings for Sheet
         tags_str = ", ".join(final_tags)
+        
+        # Robust Daily Limit
+        daily_limit = acc.get("limit", acc.get("daily_limit", 0))
 
         processed_accounts.append({
             "email": acc.get("email"),
             "status": final_status,
-            "daily_limit": acc.get("limit", 0),
+            "daily_limit": daily_limit,
             "warmup_score": f"{acc.get('stat_warmup_score', 0)}/100",
             "tags": tags_str,
+            "customer_tag": acc.get("customer_tag", "-"),
             "change": change_display
         })
 
