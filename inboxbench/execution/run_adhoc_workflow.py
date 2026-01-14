@@ -110,6 +110,27 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
                 if "tags" not in tgt: tgt["tags"] = []
                 # Ensure we don't duplicate if already present
                 if tid not in tgt["tags"]: tgt["tags"].append(tid)
+
+        # --- RESOLVE MISSING TAG NAMES ---
+        # The hidden tags we just found are likely NOT in all_tag_map since /custom-tags list hides them.
+        # We must fetch their names explicitly so they don't show as UUIDs or get ignored.
+        unique_mapping_tags = set(m.get("tag_id") for m in mappings if m.get("tag_id"))
+        missing_tag_ids = [tid for tid in unique_mapping_tags if tid not in all_tag_map]
+        
+        logging.info(f"Resolving {len(missing_tag_ids)} hidden tag names...")
+        for tid in missing_tag_ids:
+            try:
+                # Direct fetch for hidden tag
+                # Assuming simple get endpoint works based on debug research
+                tag_details = api._get(f"/custom-tags/{tid}")
+                if tag_details and "label" in tag_details:
+                    all_tag_map[tid] = tag_details["label"]
+                    logging.info(f"Resolved hidden tag {tid} -> {tag_details['label']}")
+                else:
+                    logging.warning(f"Could not resolve name for tag {tid}")
+                    all_tag_map[tid] = str(tid) # Fallback to UUID
+            except Exception as e:
+                logging.warning(f"Error fetching tag {tid}: {e}")
                 
     except Exception as e:
         logging.warning(f"Failed to fetch hidden mappings: {e}")
