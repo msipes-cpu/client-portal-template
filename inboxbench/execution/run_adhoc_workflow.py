@@ -424,7 +424,14 @@ def run_adhoc_report(api_key, sheet_url, report_email=None, warmup_threshold=70,
             change_display = "-"
         
         # 3. Format Strings for Sheet
-        tags_str = ", ".join(final_tags)
+        # User Feedback: Don't show Customer Tag in "Tags" column (since it has its own column).
+        # Also filter out internal status tags if present.
+        c_tag = acc.get("customer_tag")
+        display_tags = [
+            t for t in final_tags 
+            if t != c_tag and not t.startswith("status-")
+        ]
+        tags_str = ", ".join(display_tags)
         
         # Robust Daily Limit
         daily_limit = acc.get("limit", acc.get("daily_limit", 0))
