@@ -292,3 +292,29 @@ class InstantlyAPI:
         # Try /analytics/account or similar if exists.
         # For now, return empty to signal "Not Implemented"
         return {}
+
+    def get_custom_tag_mappings(self, resource_ids):
+        """
+        Fetches tag mappings for specific resources (Campaign IDs or Account Emails).
+        This is necessary because V2 list endpoints might omit some tags.
+        """
+        if not resource_ids:
+            return []
+            
+        # The API might have a limit on URL length or param count.
+        # Safe chunking: 50 IDs at a time.
+        all_items = []
+        chunk_size = 50
+        
+        for i in range(0, len(resource_ids), chunk_size):
+            chunk = resource_ids[i:i + chunk_size]
+            params = {
+                "resource_ids": ",".join(chunk),
+                "limit": 100 
+            }
+            res = self._get("/custom-tag-mappings", params=params)
+            if res and isinstance(res, dict) and "items" in res:
+                all_items.extend(res["items"])
+                
+        return all_items
+
