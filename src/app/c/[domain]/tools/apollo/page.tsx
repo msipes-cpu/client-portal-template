@@ -13,16 +13,16 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
     const [isLoading, setIsLoading] = useState(false)
     const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' })
 
-    // You should configure this in your .env.production
-    const WEBHOOK_URL = process.env.NEXT_PUBLIC_MODAL_WEBHOOK_URL || "YOUR_MODAL_WEBHOOK_URL_HERE";
+    // Configuration checks
+    const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setIsLoading(true)
         setStatus({ type: null, message: '' })
 
-        if (WEBHOOK_URL === "YOUR_MODAL_WEBHOOK_URL_HERE") {
-            setStatus({ type: 'error', message: 'Modal Webhook URL is not configured. Please set NEXT_PUBLIC_MODAL_WEBHOOK_URL.' })
+        if (!BACKEND_URL) {
+            setStatus({ type: 'error', message: 'Backend URL is not configured. Please set NEXT_PUBLIC_BACKEND_URL.' })
             setIsLoading(false)
             return
         }
@@ -32,12 +32,12 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
             // Hardcoding for now based on user context or input if needed
             const userEmail = "msipes@sipesautomation.com"
 
-            const res = await fetch(WEBHOOK_URL, {
+            const res = await fetch(`${BACKEND_URL}/api/leads/process-url`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     url: url,
-                    target: target,
+                    limit: target, // Backend expects 'limit'
                     email: userEmail
                 })
             })
@@ -47,17 +47,17 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
             if (res.ok) {
                 setStatus({
                     type: 'success',
-                    message: `Enrichment job started! You will receive an email with the results at ${userEmail} shortly.`
+                    message: `Enrichment job started (Run ID: ${data.run_id})! You will receive an email with the results at ${userEmail} shortly.`
                 })
                 setUrl("")
             } else {
                 setStatus({
                     type: 'error',
-                    message: data.message || "Failed to start the job. Please try again."
+                    message: data.detail || "Failed to start the job. Please try again."
                 })
             }
         } catch (error) {
-            setStatus({ type: 'error', message: "An unexpected error occurred." })
+            setStatus({ type: 'error', message: "An unexpected error occurred. Is the backend running?" })
         } finally {
             setIsLoading(false)
         }
