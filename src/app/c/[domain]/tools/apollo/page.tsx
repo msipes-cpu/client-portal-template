@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { AlertCircle, CheckCircle2, Loader2, Sparkles } from "lucide-react"
+import { Loader2, CheckCircle2, AlertCircle, ArrowUpDown, Download } from "lucide-react"
 
 export default function ApolloEnrichmentPage({ params }: { params: { domain: string } }) {
     const [url, setUrl] = useState("")
@@ -57,36 +57,55 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
         return () => clearInterval(interval);
     }, []);
 
-    const openGoogleSheet = async (runId: string) => {
+    const downloadCSV = async (runId: string) => {
         setLoadingSheet(runId);
         try {
-            const res = await fetch(`/api/proxy?path=/api/runs/${runId}`);
+            // Fetch leads from backend
+            const res = await fetch(`/api/proxy?path=/api/runs/${runId}/leads`);
             if (res.ok) {
                 const data = await res.json();
-                const logs = data.logs || [];
+                const leads = data.leads || [];
 
-                // Find "Sheet Created: https://..." or "Sheet URL: https://..."
-                let sheetUrl = null;
-                for (const log of logs) {
-                    const stdout = log.data?.stdout || "";
-                    if (stdout.includes("Sheet Created:") || stdout.includes("Sheet URL:")) {
-                        const parts = stdout.split("https://");
-                        if (parts.length > 1) {
-                            sheetUrl = "https://" + parts[1].trim();
-                            break; // specific priority?
-                        }
-                    }
+                if (leads.length === 0) {
+                    alert("No leads found for this run yet.");
+                    setLoadingSheet(null);
+                    return;
                 }
 
-                if (sheetUrl) {
-                    window.open(sheetUrl, '_blank');
-                } else {
-                    alert("Google Sheet URL not found in logs yet. It might still be generating.");
-                }
+                // Convert to CSV
+                // 1. Get headers
+                const headers = Object.keys(leads[0]).filter(k => k !== 'raw_data' && k !== 'id' && k !== 'run_id');
+
+                // 2. Build CSV string
+                const csvRows = [
+                    headers.join(','), // Header row
+                    ...leads.map((lead: any) => {
+                        return headers.map(header => {
+                            let val = lead[header] || "";
+                            // Escape quotes and wrap in quotes
+                            const escaped = String(val).replace(/"/g, '""');
+                            return `"${escaped}"`;
+                        }).join(',');
+                    })
+                ];
+
+                const csvString = csvRows.join('\n');
+
+                // 3. Trigger Download
+                const blob = new Blob([csvString], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `leads_${runId}.csv`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+
+            } else {
+                alert("Failed to fetch leads.");
             }
         } catch (e) {
-            console.error("Error opening sheet:", e);
-            alert("Failed to retrieve sheet details.");
+            console.error("Error downloading CSV:", e);
+            alert("Error downloading CSV.");
         } finally {
             setLoadingSheet(null);
         }
@@ -103,7 +122,7 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                 if (res.ok) {
                     const data = await res.json();
                     const logs = data.logs || [];
-                    1
+
                     console.log("Polling Logs:", logs.length, "entries"); // Debug
 
                     // Parse logs for progress
@@ -132,11 +151,25 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                     if (data.run?.status === "COMPLETED") {
                         setRunId(null);
                         setStatus({ type: 'success', message: `Job Complete! Check your email.` });
-                        setProgress(null);
-                        // Refresh runs list
-                        // Trigger a fetch somehow or finding a way to re-run the other effect? 
-                        // Simplest is just let the interval handle it or do:
-                        // fetchRuns() // If we elevated that function
+                        // Keep progress at 100% or whatever it was
+                        // setProgress(null); // Look at this? Removing this keeps the bar visible.
+
+                        // Refresh runs list immediately
+                        const fetchRuns = async () => {
+                            try {
+                                const res = await fetch(`/api/proxy?path=/api/admin/runs`);
+                                if (res.ok) {
+                                    const data = await res.json();
+                                    if (data.runs) {
+                                        const myRuns = data.runs.filter((r: any) =>
+                                            r.meta?.email === userEmail
+                                        );
+                                        setRecentRuns(myRuns);
+                                    }
+                                }
+                            } catch (e) { }
+                        };
+                        fetchRuns();
                     }
                 }
             } catch (e) {
@@ -159,16 +192,13 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
         }
 
         try {
-
-
-
             // Use local proxy to bypass CORS
             const res = await fetch(`/api/proxy`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     url: url,
-                    limit: target,
+                    limit: parseInt(target.toString()),
                     email: userEmail
                 })
             })
@@ -185,12 +215,12 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
             } else {
                 setStatus({
                     type: 'error',
-                    message: data.detail || "Failed to start the job. Please try again."
+                    message: data.message || "Failed to start the job. Please try again."
                 })
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Submission Error:", error);
-            setStatus({ type: 'error', message: `Error: ${error.message || "Is the backend running?"}` })
+            setStatus({ type: 'error', message: `Error: ${(error as Error).message || "Is the backend running?"}` })
         } finally {
             setIsLoading(false)
         }
@@ -220,9 +250,9 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                 <CardContent>
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="space-y-2">
-                            <Label htmlFor="apollo-url">Apollo Search URL</Label>
+                            <Label htmlFor="url">Apollo Search URL</Label>
                             <Input
-                                id="apollo-url"
+                                id="url"
                                 placeholder="https://app.apollo.io/#/people/search/..."
                                 value={url}
                                 onChange={(e) => setUrl(e.target.value)}
@@ -232,22 +262,28 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
 
                         <div className="space-y-2">
                             <Label htmlFor="target">Target # of Verified Leads</Label>
-                            <Input
-                                id="target"
-                                type="number"
-                                min={1}
-                                max={10000}
-                                value={target}
-                                onChange={(e) => setTarget(Number(e.target.value))}
-                                required
-                            />
+                            <div className="relative">
+                                <Input
+                                    id="target"
+                                    type="number"
+                                    min={1}
+                                    max={10000}
+                                    value={target}
+                                    onChange={(e) => setTarget(Number(e.target.value))}
+                                    required
+                                    className="pr-12"
+                                />
+                                <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+                                    <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
+                                </div>
+                            </div>
                             <p className="text-xs text-muted-foreground">
                                 Max 10,000 leads per run.
                             </p>
                         </div>
 
                         {status.message && (
-                            <div className={`p-4 rounded-md flex items-center gap-3 ${status.type === 'success' ? 'bg-green-500/10 text-green-600' : 'bg-red-500/10 text-red-600'}`}>
+                            <div className={`p-4 rounded-md flex items-center gap-3 ${status.type === 'success' ? 'bg-green-500/15 text-green-500' : 'bg-red-500/15 text-red-500'}`}>
                                 {status.type === 'success' ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
                                 <p className="text-sm font-medium">{status.message}</p>
                             </div>
@@ -326,13 +362,16 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                                     <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => openGoogleSheet(run.run_id)}
-                                        disabled={loadingSheet === run.run_id}
+                                        onClick={() => downloadCSV(run.run_id)}
+                                        disabled={loadingSheet === run.run_id || run.status !== 'COMPLETED'}
                                     >
                                         {loadingSheet === run.run_id ? (
                                             <Loader2 className="h-4 w-4 animate-spin" />
                                         ) : (
-                                            "Open Sheet"
+                                            <div className="flex items-center gap-2">
+                                                <Download className="h-4 w-4" />
+                                                <span>Download CSV</span>
+                                            </div>
                                         )}
                                     </Button>
                                 </div>
