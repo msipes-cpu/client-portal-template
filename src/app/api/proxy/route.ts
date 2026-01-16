@@ -35,7 +35,12 @@ export async function POST(request: Request) {
     } catch (error: any) {
         console.error("[Proxy] Error forwarding request:", error);
         return NextResponse.json(
-            { message: error.message || 'Internal Proxy Error' },
+            {
+                message: error.message || 'Internal Proxy Error',
+                debug_url: targetUrl,
+                cause: error.cause ? String(error.cause) : undefined,
+                code: error.code
+            },
             { status: 500 }
         );
     }
