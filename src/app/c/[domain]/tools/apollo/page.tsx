@@ -14,6 +14,8 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
     const [runId, setRunId] = useState<string | null>(null)
     const [progress, setProgress] = useState<{ current: number, total: number } | null>(null)
     const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' })
+    const [recentRuns, setRecentRuns] = useState<any[]>([])
+    const [loadingSheet, setLoadingSheet] = useState<string | null>(null)
 
     // Configuration checks
     // Sanitize the URL: Remove surrounding quotes if present, remove trailing slash
@@ -21,7 +23,76 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
     // Note: We use a local proxy (/api/proxy) so this URL is used by the server-side proxy, 
     // but we sanitize it here just in case we ever switch back or use it for display.
 
-    // Polling Effect
+    // Ideally we get the user's email from the session/auth context
+    // Hardcoding for now based on user context or input if needed
+    const userEmail = "msipes@sipesautomation.com"
+
+    // Fetch Recent Runs Effect
+    useEffect(() => {
+        const fetchRuns = async () => {
+            try {
+                // Fetch from admin runs endpoint via proxy to get metadata
+                const res = await fetch(`/api/proxy?path=/api/admin/runs`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.runs) {
+                        // Filter by user email
+                        const myRuns = data.runs.filter((r: any) =>
+                            r.meta?.email === userEmail ||
+                            // Fallback if args parse failed but we want to show something?
+                            // For now stick to strict email match
+                            false
+                        );
+                        setRecentRuns(myRuns);
+                    }
+                }
+            } catch (e) {
+                console.error("Error fetching recent runs:", e);
+            }
+        };
+
+        fetchRuns();
+        // Refresh every 30s
+        const interval = setInterval(fetchRuns, 30000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const openGoogleSheet = async (runId: string) => {
+        setLoadingSheet(runId);
+        try {
+            const res = await fetch(`/api/proxy?path=/api/runs/${runId}`);
+            if (res.ok) {
+                const data = await res.json();
+                const logs = data.logs || [];
+
+                // Find "Sheet Created: https://..." or "Sheet URL: https://..."
+                let sheetUrl = null;
+                for (const log of logs) {
+                    const stdout = log.data?.stdout || "";
+                    if (stdout.includes("Sheet Created:") || stdout.includes("Sheet URL:")) {
+                        const parts = stdout.split("https://");
+                        if (parts.length > 1) {
+                            sheetUrl = "https://" + parts[1].trim();
+                            break; // specific priority?
+                        }
+                    }
+                }
+
+                if (sheetUrl) {
+                    window.open(sheetUrl, '_blank');
+                } else {
+                    alert("Google Sheet URL not found in logs yet. It might still be generating.");
+                }
+            }
+        } catch (e) {
+            console.error("Error opening sheet:", e);
+            alert("Failed to retrieve sheet details.");
+        } finally {
+            setLoadingSheet(null);
+        }
+    };
+
+    // Polling Effect (kept separate for clarity)
     useEffect(() => {
         if (!runId) return;
 
@@ -32,20 +103,21 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                 if (res.ok) {
                     const data = await res.json();
                     const logs = data.logs || [];
+                    1
+                    console.log("Polling Logs:", logs.length, "entries"); // Debug
 
                     // Parse logs for progress
-                    // Log format: {"stdout": "[PROGRESS]: 5/100"} or similar inside data.stdout
-                    // backend/tasks.py stores it as: data=json.dumps({"stdout": ...})
-                    // But backend/main.py parses it back to dict in 'data' field.
-                    // So we look for log.data.stdout -> "[PROGRESS]: X/Y"
-
                     let foundProgress = false;
                     // Read from end to specific to find latest
                     for (let i = logs.length - 1; i >= 0; i--) {
                         const log = logs[i];
                         const stdout = log.data?.stdout || "";
+
+                        // Robust parsing for [PROGRESS]: 5/100
                         if (stdout.includes("[PROGRESS]:")) {
-                            const parts = stdout.split("[PROGRESS]:")[1].trim().split("/");
+                            const raw = stdout.split("[PROGRESS]:")[1].trim();
+                            // console.log("Found progress line:", raw); // Debug
+                            const parts = raw.split("/");
                             if (parts.length === 2) {
                                 setProgress({
                                     current: parseInt(parts[0]),
@@ -57,11 +129,14 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                         }
                     }
 
-                    // Optional: Check if completed
                     if (data.run?.status === "COMPLETED") {
-                        setRunId(null); // Stop polling
+                        setRunId(null);
                         setStatus({ type: 'success', message: `Job Complete! Check your email.` });
                         setProgress(null);
+                        // Refresh runs list
+                        // Trigger a fetch somehow or finding a way to re-run the other effect? 
+                        // Simplest is just let the interval handle it or do:
+                        // fetchRuns() // If we elevated that function
                     }
                 }
             } catch (e) {
@@ -84,9 +159,7 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
         }
 
         try {
-            // Ideally we get the user's email from the session/auth context
-            // Hardcoding for now based on user context or input if needed
-            const userEmail = "msipes@sipesautomation.com"
+
 
 
             // Use local proxy to bypass CORS
@@ -218,6 +291,56 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                     </p>
                 </CardFooter>
             </Card>
+
+            {/* Recent Runs Section */}
+            {recentRuns.length > 0 && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-lg">Recent Jobs</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-4">
+                            {recentRuns.map((run) => (
+                                <div key={run.run_id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg bg-muted/20 gap-4">
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className={`h-2 w-2 rounded-full ${run.status === 'COMPLETED' ? 'bg-green-500' :
+                                                    run.status === 'FAILED' || run.status === 'ERROR' ? 'bg-red-500' :
+                                                        'bg-blue-500 animate-pulse'
+                                                }`} />
+                                            <span className="font-medium text-sm">
+                                                {new Date(run.start_time).toLocaleString()}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded uppercase">
+                                                {run.status}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground truncate max-w-[300px]" title={run.meta?.url}>
+                                            {run.meta?.url}
+                                        </p>
+                                        <div className="text-xs text-muted-foreground">
+                                            Target: {run.meta?.limit || 'Unknown'} Leads
+                                        </div>
+                                    </div>
+
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => openGoogleSheet(run.run_id)}
+                                        disabled={loadingSheet === run.run_id}
+                                    >
+                                        {loadingSheet === run.run_id ? (
+                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                            "Open Sheet"
+                                        )}
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
         </div>
     )
 }
