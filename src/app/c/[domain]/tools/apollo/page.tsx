@@ -16,27 +16,15 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
     // Configuration checks
     // Sanitize the URL: Remove surrounding quotes if present, remove trailing slash
     const RAW_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-    const BACKEND_URL = RAW_URL.replace(/['"]/g, "").replace(/\/$/, "");
-
-    const checkConnection = async () => {
-        try {
-            console.log("Testing connection to:", BACKEND_URL);
-            const res = await fetch(`${BACKEND_URL}/`, { method: "GET" });
-            const data = await res.json();
-            alert(`Connection Successful! Status: ${res.status}\nResponse: ${JSON.stringify(data)}`);
-            console.log("Health Check Data:", data);
-        } catch (error: any) {
-            alert(`Connection Failed!\nError: ${error.message}`);
-            console.error("Health Check Error:", error);
-        }
-    }
+    // Note: We use a local proxy (/api/proxy) so this URL is used by the server-side proxy, 
+    // but we sanitize it here just in case we ever switch back or use it for display.
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setIsLoading(true)
         setStatus({ type: null, message: '' })
 
-        if (!BACKEND_URL) {
+        if (!RAW_URL) {
             setStatus({ type: 'error', message: 'Backend URL is not configured. Please set NEXT_PUBLIC_BACKEND_URL.' })
             setIsLoading(false)
             return
@@ -48,10 +36,7 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
             const userEmail = "msipes@sipesautomation.com"
 
             // Use local proxy to bypass CORS
-            const proxyUrl = `/api/proxy`;
-            console.log("Submitting to Proxy:", proxyUrl);
-
-            const res = await fetch(proxyUrl, {
+            const res = await fetch(`/api/proxy`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -61,9 +46,7 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                 })
             })
 
-            console.log("Response Status:", res.status);
             const data = await res.json()
-            console.log("Response Data:", data);
 
             if (res.ok) {
                 setStatus({
@@ -154,13 +137,10 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                         </Button>
                     </form>
                 </CardContent>
-                <CardFooter className="bg-muted/50 text-xs text-muted-foreground flex justify-between items-center">
+                <CardFooter className="bg-muted/50 text-xs text-muted-foreground">
                     <p>
-                        This process typically takes 1-5 minutes depending on the target size.
+                        This process typically takes 1-5 minutes depending on the target size. You can close this page after starting.
                     </p>
-                    <Button variant="ghost" size="sm" onClick={checkConnection} type="button" className="text-xs h-6">
-                        Test Connection
-                    </Button>
                 </CardFooter>
             </Card>
         </div>
