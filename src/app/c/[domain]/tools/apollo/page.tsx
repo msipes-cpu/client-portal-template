@@ -14,7 +14,22 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
     const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' })
 
     // Configuration checks
-    const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+    // Sanitize the URL: Remove surrounding quotes if present, remove trailing slash
+    const RAW_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+    const BACKEND_URL = RAW_URL.replace(/['"]/g, "").replace(/\/$/, "");
+
+    const checkConnection = async () => {
+        try {
+            console.log("Testing connection to:", BACKEND_URL);
+            const res = await fetch(`${BACKEND_URL}/`, { method: "GET" });
+            const data = await res.json();
+            alert(`Connection Successful! Status: ${res.status}\nResponse: ${JSON.stringify(data)}`);
+            console.log("Health Check Data:", data);
+        } catch (error: any) {
+            alert(`Connection Failed!\nError: ${error.message}`);
+            console.error("Health Check Error:", error);
+        }
+    }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -139,10 +154,13 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                         </Button>
                     </form>
                 </CardContent>
-                <CardFooter className="bg-muted/50 text-xs text-muted-foreground">
+                <CardFooter className="bg-muted/50 text-xs text-muted-foreground flex justify-between items-center">
                     <p>
-                        This process typically takes 1-5 minutes depending on the target size. You can close this page after starting.
+                        This process typically takes 1-5 minutes depending on the target size.
                     </p>
+                    <Button variant="ghost" size="sm" onClick={checkConnection} type="button" className="text-xs h-6">
+                        Test Connection
+                    </Button>
                 </CardFooter>
             </Card>
         </div>
