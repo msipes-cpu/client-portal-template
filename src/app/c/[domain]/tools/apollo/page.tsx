@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { Loader2, CheckCircle2, AlertCircle, ArrowUpDown, Download } from "lucide-react"
+import { Loader2, CheckCircle2, AlertCircle, ArrowUpDown, Download, Sparkles } from "lucide-react"
 
 export default function ApolloEnrichmentPage({ params }: { params: { domain: string } }) {
     const [url, setUrl] = useState("")
