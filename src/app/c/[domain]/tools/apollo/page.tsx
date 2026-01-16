@@ -32,7 +32,11 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
             // Hardcoding for now based on user context or input if needed
             const userEmail = "msipes@sipesautomation.com"
 
-            const res = await fetch(`${BACKEND_URL}/api/leads/process-url`, {
+            console.log("Submitting to Backend URL:", BACKEND_URL);
+            const fullUrl = `${BACKEND_URL}/api/leads/process-url`;
+            console.log("Full Request URL:", fullUrl);
+
+            const res = await fetch(fullUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -42,7 +46,9 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                 })
             })
 
+            console.log("Response Status:", res.status);
             const data = await res.json()
+            console.log("Response Data:", data);
 
             if (res.ok) {
                 setStatus({
@@ -56,8 +62,9 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                     message: data.detail || "Failed to start the job. Please try again."
                 })
             }
-        } catch (error) {
-            setStatus({ type: 'error', message: "An unexpected error occurred. Is the backend running?" })
+        } catch (error: any) {
+            console.error("Submission Error:", error);
+            setStatus({ type: 'error', message: `Error: ${error.message || "Is the backend running?"}` })
         } finally {
             setIsLoading(false)
         }
