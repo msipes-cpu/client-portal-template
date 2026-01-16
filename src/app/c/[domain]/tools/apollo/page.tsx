@@ -47,16 +47,16 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
             // Hardcoding for now based on user context or input if needed
             const userEmail = "msipes@sipesautomation.com"
 
-            console.log("Submitting to Backend URL:", BACKEND_URL);
-            const fullUrl = `${BACKEND_URL}/api/leads/process-url`;
-            console.log("Full Request URL:", fullUrl);
+            // Use local proxy to bypass CORS
+            const proxyUrl = `/api/proxy`;
+            console.log("Submitting to Proxy:", proxyUrl);
 
-            const res = await fetch(fullUrl, {
+            const res = await fetch(proxyUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     url: url,
-                    limit: target, // Backend expects 'limit'
+                    limit: target,
                     email: userEmail
                 })
             })
