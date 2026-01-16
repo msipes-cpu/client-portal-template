@@ -305,11 +305,11 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                                     <div className="space-y-1">
                                         <div className="flex items-center gap-2">
                                             <span className={`h-2 w-2 rounded-full ${run.status === 'COMPLETED' ? 'bg-green-500' :
-                                                    run.status === 'FAILED' || run.status === 'ERROR' ? 'bg-red-500' :
-                                                        'bg-blue-500 animate-pulse'
+                                                run.status === 'FAILED' || run.status === 'ERROR' ? 'bg-red-500' :
+                                                    'bg-blue-500 animate-pulse'
                                                 }`} />
                                             <span className="font-medium text-sm">
-                                                {new Date(run.start_time).toLocaleString()}
+                                                {new Date(run.start_time.endsWith('Z') ? run.start_time : run.start_time + 'Z').toLocaleString()}
                                             </span>
                                             <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded uppercase">
                                                 {run.status}
