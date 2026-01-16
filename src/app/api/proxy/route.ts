@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
+    let targetUrl = ""; // Initialize targetUrl outside the try block
     try {
         const body = await request.json();
 
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
         }
 
         const cleanUrl = BACKEND_URL.replace(/['"]/g, "").replace(/\/$/, "");
-        const targetUrl = `${cleanUrl}/api/leads/process-url`;
+        targetUrl = `${cleanUrl}/api/leads/process-url`; // Assign value to targetUrl
 
         console.log(`[Proxy] Forwarding request to: ${targetUrl}`);
 
