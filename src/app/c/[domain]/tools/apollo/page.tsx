@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,11 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
     const [url, setUrl] = useState("")
     const [target, setTarget] = useState(100)
     const [isLoading, setIsLoading] = useState(false)
+    const [url, setUrl] = useState("")
+    const [target, setTarget] = useState(100)
+    const [isLoading, setIsLoading] = useState(false)
+    const [runId, setRunId] = useState<string | null>(null)
+    const [progress, setProgress] = useState<{ current: number, total: number } | null>(null)
     const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: '' })
 
     // Configuration checks
@@ -18,6 +23,57 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
     const RAW_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "";
     // Note: We use a local proxy (/api/proxy) so this URL is used by the server-side proxy, 
     // but we sanitize it here just in case we ever switch back or use it for display.
+
+    // Polling Effect
+    useEffect(() => {
+        if (!runId) return;
+
+        const interval = setInterval(async () => {
+            try {
+                // Use proxy to fetch run details
+                const res = await fetch(`/api/proxy?path=/api/runs/${runId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const logs = data.logs || [];
+
+                    // Parse logs for progress
+                    // Log format: {"stdout": "[PROGRESS]: 5/100"} or similar inside data.stdout
+                    // backend/tasks.py stores it as: data=json.dumps({"stdout": ...})
+                    // But backend/main.py parses it back to dict in 'data' field.
+                    // So we look for log.data.stdout -> "[PROGRESS]: X/Y"
+
+                    let foundProgress = false;
+                    // Read from end to specific to find latest
+                    for (let i = logs.length - 1; i >= 0; i--) {
+                        const log = logs[i];
+                        const stdout = log.data?.stdout || "";
+                        if (stdout.includes("[PROGRESS]:")) {
+                            const parts = stdout.split("[PROGRESS]:")[1].trim().split("/");
+                            if (parts.length === 2) {
+                                setProgress({
+                                    current: parseInt(parts[0]),
+                                    total: parseInt(parts[1])
+                                });
+                                foundProgress = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Optional: Check if completed
+                    if (data.run?.status === "COMPLETED") {
+                        setRunId(null); // Stop polling
+                        setStatus({ type: 'success', message: `Job Complete! Check your email.` });
+                        setProgress(null);
+                    }
+                }
+            } catch (e) {
+                console.error("Polling error", e);
+            }
+        }, 2000);
+
+        return () => clearInterval(interval);
+    }, [runId]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -35,6 +91,7 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
             // Hardcoding for now based on user context or input if needed
             const userEmail = "msipes@sipesautomation.com"
 
+
             // Use local proxy to bypass CORS
             const res = await fetch(`/api/proxy`, {
                 method: "POST",
@@ -49,9 +106,10 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
             const data = await res.json()
 
             if (res.ok) {
+                setRunId(data.run_id); // Start polling
                 setStatus({
                     type: 'success',
-                    message: `Enrichment job started (Run ID: ${data.run_id})! You will receive an email with the results at ${userEmail} shortly.`
+                    message: `Enrichment job started! You will receive an email shortly.`
                 })
                 setUrl("")
             } else {
@@ -125,16 +183,36 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                             </div>
                         )}
 
-                        <Button type="submit" className="w-full" disabled={isLoading}>
+                        <Button type="submit" className="w-full" disabled={isLoading || !!runId}>
                             {isLoading ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                     Starting Workflow...
                                 </>
+                            ) : runId ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Processing Leads...
+                                </>
                             ) : (
                                 "Start Enrichment"
                             )}
                         </Button>
+
+                        {progress && (
+                            <div className="space-y-1 pt-2">
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                    <span>Processing...</span>
+                                    <span>{progress.current} / {progress.total}</span>
+                                </div>
+                                <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-primary transition-all duration-500 ease-in-out"
+                                        style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                                    />
+                                </div>
+                            </div>
+                        )}
                     </form>
                 </CardContent>
                 <CardFooter className="bg-muted/50 text-xs text-muted-foreground">
