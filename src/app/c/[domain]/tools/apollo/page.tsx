@@ -67,7 +67,17 @@ export default function ApolloEnrichmentPage({ params }: { params: { domain: str
                 const leads = data.leads || [];
 
                 if (leads.length === 0) {
-                    alert("No leads found for this run yet.");
+                    // Fetch logs to show why
+                    const logRes = await fetch(`/api/proxy?path=/api/runs/${runId}`);
+                    let errorMessage = "No leads found for this run.";
+                    if (logRes.ok) {
+                        const logData = await logRes.json();
+                        const logs = logData.logs || [];
+                        // Get last 5 lines of stdout
+                        const lastLogs = logs.slice(-5).map((l: any) => l.data?.stdout || "").filter(Boolean).join("\n");
+                        if (lastLogs) errorMessage += "\n\nLogs:\n" + lastLogs;
+                    }
+                    alert(errorMessage);
                     setLoadingSheet(null);
                     return;
                 }
